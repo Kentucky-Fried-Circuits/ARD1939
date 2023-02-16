@@ -5,6 +5,21 @@
 #include "ARD1939_dfs.h" // user config parameters. Unfortunately, there's no good way in the Arduino IDE to move these parameters to your sketch
 
 // J1939 Settings
+// applicationi-specific customization
+#ifndef ARD1939VERSION
+  #ifndef TRANSPORT_PROTOCOL
+    #define TRANSPORT_PROTOCOL                    0
+  #endif
+  #ifndef J1939_MSGLEN
+    #define J1939_MSGLEN                          8 
+  #endif
+  #ifndef MSGFILTERS
+    #define MSGFILTERS                            10
+  #endif
+  #ifndef TRANSPORT_PROTOCOL_XMIT
+    #define TRANSPORT_PROTOCOL_XMIT				0
+  #endif
+#endif
 #if ARD1939VERSION == 0
   #define TRANSPORT_PROTOCOL                    0
   #define J1939_MSGLEN                          8
@@ -34,16 +49,19 @@
   #define TRANSPORT_PROTOCOL_XMIT				1
 #endif
 
+
+
 #define GLOBALADDRESS                    	255
 #define NULLADDRESS                      	254
 
 #define RESERVED                            255  // CAN bus reserved or null data byte
-// Return Codes
+// Return Codes. TODO would be better as an enum type
 #define ADDRESSCLAIM_INIT                       0
 #define ADDRESSCLAIM_INPROGRESS           	1
 #define ADDRESSCLAIM_FINISHED             	2
 #define NORMALDATATRAFFIC                 	2
 #define ADDRESSCLAIM_FAILED               	3
+#define ADDRESSCLAIM_TIMEOUT                4
 
 #define J1939_MSG_NONE                   	0
 #define J1939_MSG_PROTOCOL               	1
@@ -77,9 +95,9 @@
 
 struct sTimer
 {
-  int timeoutMaybe;
-  bool activeMaybe;
-  bool expiredMaybe;
+  int timeout;
+  bool running;
+  bool expired;
 };
 
 class ARD1939
@@ -88,6 +106,7 @@ class ARD1939
     // Initialization
     ARD1939(byte); // CS_PIN
     byte Init(int nSystemTime);
+    byte j1939Init();
     void SetPreferredAddress(byte nAddr);
     void SetAddressRange(byte nAddrBottom, byte nAddrTop);
     void SetNAME(long lIdentityNumber, int nManufacturerCode, byte nFunctionInstance, byte nECUInstance, 
@@ -105,12 +124,12 @@ class ARD1939
     
   private:
 	MCP_CAN *_CAN0;
-    byte claimAddressMaybe(byte, byte*);
+    byte claimAddress(byte, byte*);
     bool getAnotherMyAddr(void); //TEST
     byte compareIds(byte* theirID, byte* myID);
     byte re_Receive(long*, byte*, int*, byte*, byte*, byte*);
-    void f05(void);
-    void resetTimeoutMaybe(struct sTimer*);
+    void _updateTimers(void);
+    void _resetTimeout(struct sTimer*);
     bool re_isTransportProtocol(long*, byte*); //???
     bool re_IsPeerToPeer(long);
     bool re_isFilterActive(long);

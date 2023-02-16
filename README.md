@@ -8,3 +8,15 @@ DO NOT USE this version of the library for dual CAN bus boards without first bac
 - must pass CAN CS pin when instantiating
 
 -BA
+
+Usage
+------
+Application sets defaults in ARD1939_defs.h. Can define ARD1939VERSION to select pre-defined features and buffer sizes.  Otherwise the version 0 settings will be used, but they can be overwritten by defining any of
+  TRANSPORT_PROTOCOL
+  J1939_MSGLEN                        
+  MSGFILTERS     
+  TRANSPORT_PROTOCOL_XMIT
+
+Application must pass the CS pin for the CAN driver chip when instantiating ARD1939. Uses mcp_can for a CAN driver. 
+
+Application setup should call Init() to connect the CAN DRIVER, then j1939Init() to get an address on the j1939 network.

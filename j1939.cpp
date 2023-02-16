@@ -106,7 +106,7 @@ struct j1939Stat_t j1939Stat;
   struct re_j1939_t
   {
     byte v20;
-    bool activeMaybe;
+    bool running;
     bool v22;
     bool v23;
     bool v24;
@@ -137,20 +137,20 @@ struct j1939Stat_t j1939Stat;
   byte v63[8];
 #endif
 
-struct sTimer v38;
-struct sTimer v39;
+struct sTimer timer1;
+struct sTimer timer2;
 
 #if TRANSPORT_PROTOCOL == 1
-  struct sTimer v40;
-  struct sTimer v41;
+  struct sTimer tpTimer1;
+  struct sTimer tpTimer2;
   
-  struct sTimer v42;
-  struct sTimer v43;
-  struct sTimer v44;
-  struct sTimer v45;
-  struct sTimer v46;
-  struct sTimer v47;
-  struct sTimer v48;
+  struct sTimer minPacketsTimer;
+  struct sTimer tpTimer4;
+  struct sTimer tpTimer5;
+  struct sTimer tpTimer6;
+  struct sTimer tpTimer7;
+  struct sTimer tpTimer8;
+  struct sTimer tpTimer9;
 #endif
 
 int timeout250msTics;
@@ -186,7 +186,7 @@ int v50;
 #endif
 
 int v60[] = {8, 9, 10, 12, 15};
-byte v61;
+byte v60index;
 
 byte v64;
 extern byte canInit(MCP_CAN*);
@@ -206,11 +206,11 @@ ARD1939::ARD1939(byte _CS)
 byte ARD1939::Init(int nSystemTime)
 {
   int re_i;
-  resetTimeoutMaybe(&v38);
-  resetTimeoutMaybe(&v39);
+  _resetTimeout(&timer1);
+  _resetTimeout(&timer2);
   timeout250msTics = timeout250ms / nSystemTime;
   v50 = d15 / nSystemTime;
-  v61 = 0;
+  v60index = 0;
   v60[0] = (int)8 / nSystemTime;
   v60[1] = (int)9 / nSystemTime;
   v60[2] = (int)10 / nSystemTime;
@@ -252,6 +252,31 @@ byte ARD1939::Init(int nSystemTime)
   return canInit(_CAN0);
 }
 
+byte ARD1939::j1939Init()
+{
+  sTimer faultTimer = {3000, true, true};
+  byte status;
+  byte nMsgId = 0;
+  long lPGN = 0x00L;
+  byte pMsg[8] = { RESERVED, RESERVED, RESERVED, RESERVED, RESERVED, RESERVED, RESERVED, RESERVED };
+  int nMsgLen = 0;
+  byte nDestAddr = NULLADDRESS;
+  byte nSrcAddr =  NULLADDRESS;
+  byte nPriority = 0xFF; // lowest wins
+  do { // loop until we get good j1939 status
+    status = Operate(&nMsgId, &lPGN, &pMsg[0], &nMsgLen, &nDestAddr, &nSrcAddr, &nPriority); 
+    if (--faultTimer.timeout == 0) {
+      return ADDRESSCLAIM_TIMEOUT;
+    }
+    if (status == ADDRESSCLAIM_FAILED) {
+      return status;
+    }
+    delay(1);
+  } while (status != NORMALDATATRAFFIC);
+  return status;
+
+}
+
 void ARD1939::Terminate(void)
 {
   Init(  d15 / v50); // d15/v50 is a hack to recover the original nSystemTime. 
@@ -262,7 +287,7 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
 {
   byte j1939Status;
   byte compareIdsRetVal;
-  f05();
+  _updateTimers();
   *nMsgId = re_Receive(lPGN, &pMsg[0], nMsgLen, nDestAddr, nSrcAddr, nPriority);
   if(*nMsgId == J1939_MSG_APP)
   {
@@ -324,7 +349,7 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
 #endif           
               j1939Stat.v07 = false;
               j1939Stat.canOperateMaybe = false;
-              claimAddressMaybe(*nSrcAddr, &j1939Name[NAME_ID]);
+              claimAddress(*nSrcAddr, &j1939Name[NAME_ID]);
               break;          
             case 2:  
               Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.re_nSourceAddress,
@@ -385,10 +410,10 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
           {
             if(*nDestAddr == GLOBALADDRESS)
             {
-              v39.timeoutMaybe = v60[v61++];
-              v39.activeMaybe = true;
-              if(v61 > 4)
-                v61 = 0;
+              timer2.timeout = v60[v60index++];
+              timer2.running = true;
+              if(v60index > 4)
+                v60index = 0;
             }
           }
         }
@@ -398,21 +423,21 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
       case d34:
         break;
     }
-    if(v39.expiredMaybe == true)
+    if(timer2.expired == true)
     {
-      resetTimeoutMaybe(&v39);
+      _resetTimeout(&timer2);
        Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS,
                     &j1939Name[NAME_ID], 8);
     }
   }
   else
   {
-    j1939Status = claimAddressMaybe(*nSrcAddr, &pMsg[0]);
+    j1939Status = claimAddress(*nSrcAddr, &pMsg[0]);
   }
   return j1939Status;
 }
 
-byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
+byte ARD1939::claimAddress(byte myAddr, byte* v91)
 {
   byte j1939Status;
   byte compareIdsRetVal;
@@ -428,13 +453,13 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
   }
   else if(j1939Stat.v10 == true)
   {
-    if(v39.expiredMaybe == true)
+    if(timer2.expired == true)
     {
-        resetTimeoutMaybe(&v39);
+        _resetTimeout(&timer2);
         Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
                       &j1939Name[NAME_ID], 8);
-        v38.timeoutMaybe = timeout250msTics;
-        v38.activeMaybe = true;
+        timer1.timeout = timeout250msTics;
+        timer1.running = true;
         j1939Stat.v10 = false;
     }
   }
@@ -446,8 +471,8 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
       {
         Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
                       &j1939Name[NAME_ID], 8);
-        v38.timeoutMaybe = timeout250msTics;
-        v38.activeMaybe = true;
+        timer1.timeout = timeout250msTics;
+        timer1.running = true;
         j1939Stat.v07 = true;
       }
       else
@@ -461,9 +486,9 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
     }
     else
     {
-      if(v38.expiredMaybe == true)
+      if(timer1.expired == true)
       {
-        resetTimeoutMaybe(&v38);
+        _resetTimeout(&timer1);
         j1939Stat.re_nSourceAddress = j1939Stat.myAddr;
         j1939Stat.canOperateMaybe = true;
         j1939Status = ADDRESSCLAIM_FINISHED;
@@ -472,10 +497,10 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
       {
         if(canCheckError(_CAN0) == 1) // there's Maybe a problem
         {
-          resetTimeoutMaybe(&v38);
+          _resetTimeout(&timer1);
           if(++v64 == d49)
           {
-			DEBUG_PRINTLN(F("~6=462:claimAddr():else:!v07:!v38expired:canCheckError==1:v64==d49"));
+			DEBUG_PRINTLN(F("~6=462:claimAddr():else:!v07:!timer1expired:canCheckError==1:v64==d49"));
             j1939Stat.canOperateMaybe = false;
             j1939Stat.addressClaimFailedMaybe = true;
             j1939Status = ADDRESSCLAIM_FAILED;            
@@ -483,10 +508,10 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
           else
           {
             canInit(_CAN0);
-            v39.timeoutMaybe = v60[v61++];
-            v39.activeMaybe = true;
-            if(v61 > 4)
-              v61 = 0;
+            timer2.timeout = v60[v60index++];
+            timer2.running = true;
+            if(v60index > 4)
+              v60index = 0;
             j1939Stat.v10 = true;
           }
         }
@@ -498,7 +523,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
           switch(compareIdsRetVal)
           {
             case 0: // my address is claimed by someone with the same ID as me. They told me to bugger off
-			  DEBUG_PRINTLN(F("~485:claimAddr():else:v07==false:!v38expired:myAddr=stat.myAddr:compareIds==0")); // identical addresses land here when I'm the second node.
+			  DEBUG_PRINTLN(F("~485:claimAddr():else:v07==false:!timer1expired:myAddr=stat.myAddr:compareIds==0")); // identical addresses land here when I'm the second node.
 			  // instead of failing at this point, Ima get me another address by falling through to case 1
 // #if TRANSPORT_PROTOCOL == 1            
               // f11(d12);
@@ -519,12 +544,12 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
               {
                 Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
                               &j1939Name[NAME_ID], 8);
-                v38.timeoutMaybe = timeout250msTics;
-                v38.activeMaybe = true;
+                timer1.timeout = timeout250msTics;
+                timer1.running = true;
               }
               else
               {
-				DEBUG_PRINTLN(F("~510:claimAddr():else:v07==false:!v38expired:myAddr=stat.myAddr:compareIds==1:getAnother==false"));
+				DEBUG_PRINTLN(F("~510:claimAddr():else:v07==false:!timer1expired:myAddr=stat.myAddr:compareIds==1:getAnother==false"));
 
                 Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS,
                               &j1939Name[NAME_ID], 8);
@@ -537,8 +562,8 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
             case 2:
               Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
                             &j1939Name[NAME_ID], 8);
-              v38.timeoutMaybe = timeout250msTics;
-              v38.activeMaybe = true;
+              timer1.timeout = timeout250msTics;
+              timer1.running = true;
               break;
           }
         }
@@ -659,52 +684,52 @@ byte ARD1939::Transmit(byte re_nPriority, long re_lPGN, byte re_nSourceAddress, 
     return canTransmit(re_lID, re_pData, re_nDataLen, _CAN0);
 }
 
-void ARD1939::f05(void)
+void ARD1939::_updateTimers(void)
 {
-  if(v38.activeMaybe == true && v38.expiredMaybe == false)
+  if(timer1.running == true && timer1.expired == false)
   {
-    if(--v38.timeoutMaybe == 0)
-      v38.expiredMaybe = true;
+    if(--timer1.timeout == 0)
+      timer1.expired = true;
   }
-  if(v39.activeMaybe == true && v39.expiredMaybe == false)
-    if(--v39.timeoutMaybe == 0)
-      v39.expiredMaybe = true;
+  if(timer2.running == true && timer2.expired == false)
+    if(--timer2.timeout == 0)
+      timer2.expired = true;
 #if TRANSPORT_PROTOCOL == 1
-  if(v40.activeMaybe == true && v40.expiredMaybe == false)
-    if(--v40.timeoutMaybe == 0)
-    	v40.expiredMaybe = true;
-  if(v41.activeMaybe == true && v41.expiredMaybe == false)
-    if(--v41.timeoutMaybe == 0)
-    	v41.expiredMaybe = true;
-  if(v42.activeMaybe == true && v42.expiredMaybe == false)
-    if(--v42.timeoutMaybe == 0)
-    	v42.expiredMaybe = true;
-  if(v43.activeMaybe == true && v43.expiredMaybe == false)
-    if(--v43.timeoutMaybe == 0)
-    	v43.expiredMaybe = true;
-  if(v44.activeMaybe == true && v44.expiredMaybe == false)
-    if(--v44.timeoutMaybe == 0)
-    	v44.expiredMaybe = true;
-  if(v45.activeMaybe == true && v45.expiredMaybe == false)
-    if(--v45.timeoutMaybe == 0)
-    	v45.expiredMaybe = true;
-  if(v46.activeMaybe == true && v46.expiredMaybe == false)
-    if(--v46.timeoutMaybe == 0)
-    	v46.expiredMaybe = true;
-  if(v47.activeMaybe == true && v47.expiredMaybe == false)
-    if(--v47.timeoutMaybe == 0)
-    	v47.expiredMaybe = true;
-  if(v48.activeMaybe == true && v48.expiredMaybe == false)
-    if(--v48.timeoutMaybe == 0)
-    	v48.expiredMaybe = true;
+  if(tpTimer1.running == true && tpTimer1.expired == false)
+    if(--tpTimer1.timeout == 0)
+    	tpTimer1.expired = true;
+  if(tpTimer2.running == true && tpTimer2.expired == false)
+    if(--tpTimer2.timeout == 0)
+    	tpTimer2.expired = true;
+  if(minPacketsTimer.running == true && minPacketsTimer.expired == false)
+    if(--minPacketsTimer.timeout == 0)
+    	minPacketsTimer.expired = true;
+  if(tpTimer4.running == true && tpTimer4.expired == false)
+    if(--tpTimer4.timeout == 0)
+    	tpTimer4.expired = true;
+  if(tpTimer5.running == true && tpTimer5.expired == false)
+    if(--tpTimer5.timeout == 0)
+    	tpTimer5.expired = true;
+  if(tpTimer6.running == true && tpTimer6.expired == false)
+    if(--tpTimer6.timeout == 0)
+    	tpTimer6.expired = true;
+  if(tpTimer7.running == true && tpTimer7.expired == false)
+    if(--tpTimer7.timeout == 0)
+    	tpTimer7.expired = true;
+  if(tpTimer8.running == true && tpTimer8.expired == false)
+    if(--tpTimer8.timeout == 0)
+    	tpTimer8.expired = true;
+  if(tpTimer9.running == true && tpTimer9.expired == false)
+    if(--tpTimer9.timeout == 0)
+    	tpTimer9.expired = true;
 #endif
 }
 
-void ARD1939::resetTimeoutMaybe(struct sTimer* v75)
+void ARD1939::_resetTimeout(struct sTimer* v75)
 {
-  v75->timeoutMaybe = 0;
-  v75->activeMaybe = false;
-  v75->expiredMaybe = false;
+  v75->timeout = 0;
+  v75->running = false;
+  v75->expired = false;
 }
 
 bool ARD1939::re_isTransportProtocol(long* re_lPGN, byte* re_pMsg)
@@ -858,7 +883,7 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
   UNUSED(re_nPriority);
   UNUSED(re_nMsgLen);
   
-  if(v33.v20 == d03 && v33.activeMaybe == true)
+  if(v33.v20 == d03 && v33.running == true)
   {
       if(v33.v22 == false)
       {
@@ -871,13 +896,13 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
         msgBuf[6] = (byte)((v33.re_lPGN & 0x00FF00) >> 8);
         msgBuf[7] = (byte)(v33.re_lPGN >> 16);
         v94 = Transmit(d38, TPCM_PGN, v33.v26, GLOBALADDRESS, &msgBuf[0], 8);
-        v40.timeoutMaybe = v51;
-        v40.activeMaybe = true;        
+        tpTimer1.timeout = v51;
+        tpTimer1.running = true;        
         v33.v22 = true;
       }
       else
       {
-        if(v40.expiredMaybe == true )
+        if(tpTimer1.expired == true )
         {
           nPointer = v33.v29 * 7;
           v63[0] = ++v33.v29;
@@ -891,9 +916,9 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
           }
           else
           {
-            v40.timeoutMaybe = v51;
-            v40.activeMaybe = true;      
-            v40.expiredMaybe = false;  
+            tpTimer1.timeout = v51;
+            tpTimer1.running = true;      
+            tpTimer1.expired = false;  
           }
         }
       }
@@ -912,24 +937,24 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
         else
         {
           v33.v20 = d02;
-          v33.activeMaybe = true;
+          v33.running = true;
           v33.v26 = re_nSrcAddr;
           v33.v27 = re_nDestAddr;
           v33.v28 = re_pMsg[3];
           v33.v29 = 0;
-          v41.timeoutMaybe = v52;
-          v41.activeMaybe = true;
+          tpTimer2.timeout = v52;
+          tpTimer2.running = true;
         }
        }
       else 
         v33.re_lPGN = 0;
   }
-  if(v33.v20 == d02 && v41.expiredMaybe == true)
+  if(v33.v20 == d02 && tpTimer2.expired == true)
   {
     f11(d12);
   }
 
-  if(v33.v20 == d02 && v33.activeMaybe == true
+  if(v33.v20 == d02 && v33.running == true
   && re_lPGN == re_TPDT_PGN && re_nSrcAddr == v33.v26 && re_nDestAddr == v33.v27)
   {
     nPointer = ((int)re_pMsg[0] - 1) * 7;
@@ -942,18 +967,18 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
 	v33.v32 = true;
     }
   }
-  if(v34.v20 == d03 && v34.activeMaybe == true
+  if(v34.v20 == d03 && v34.running == true
   && re_lPGN == TPCM_PGN && re_pMsg[0] == TP_CONN_ABORT)
   {
     f12(d12);
   }
   
-  if(v34.v20 == d03 && v34.activeMaybe == true
+  if(v34.v20 == d03 && v34.running == true
   && re_lPGN == TPCM_PGN && re_pMsg[0] == d07)
   {
     f12(d12);
   }
-  if(v34.v20 == d03 && v34.activeMaybe == true)
+  if(v34.v20 == d03 && v34.running == true)
   {
       if(v34.v23 == false)
       {
@@ -966,13 +991,13 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
         msgBuf[6] = (byte)((v34.re_lPGN & 0x00FF00) >> 8);
         msgBuf[7] = (byte)(v34.re_lPGN >> 16);
         v94 = Transmit(d38, TPCM_PGN, v34.v26, v34.v27, &msgBuf[0], 8);
-        v43.timeoutMaybe = responseTics;
-        v43.activeMaybe = true;        
+        tpTimer4.timeout = responseTics;
+        tpTimer4.running = true;        
         v34.v23 = true;
       }
       else
       {
-        if(v43.expiredMaybe == true)
+        if(tpTimer4.expired == true)
         {
           msgBuf[0] = TP_CONN_ABORT;
           msgBuf[1] = TP_TIMEOUT;
@@ -987,12 +1012,12 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
         }
         if(re_lPGN == TPCM_PGN && re_nDestAddr == v34.v26 && re_pMsg[0] == TPCM_CTS_CONTROL_BYTE)
         {
-          resetTimeoutMaybe(&v43);
-          v42.timeoutMaybe = minPacketsTics;
-          v42.activeMaybe = true;        
+          _resetTimeout(&tpTimer4);
+          minPacketsTimer.timeout = minPacketsTics;
+          minPacketsTimer.running = true;        
           v34.v24 = true;
         }
-        if(v34.v24 == true && v42.expiredMaybe == true)
+        if(v34.v24 == true && minPacketsTimer.expired == true)
         {
           nPointer = v34.v29 * 7;
           v63[0] = ++v34.v29;
@@ -1002,18 +1027,18 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
           v94 = Transmit(d40, re_TPDT_PGN, v34.v26, v34.v27, &v63[0], 8);
           if(v34.v29 == v34.v28)
           {
-            resetTimeoutMaybe(&v42);
-            v47.timeoutMaybe = responseAfterRtsTics;
-            v47.activeMaybe = true;
+            _resetTimeout(&minPacketsTimer);
+            tpTimer8.timeout = responseAfterRtsTics;
+            tpTimer8.running = true;
           }
           else
           {
-            v42.timeoutMaybe = v51;
-            v42.activeMaybe = true;      
-            v42.expiredMaybe = false;  
+            minPacketsTimer.timeout = v51;
+            minPacketsTimer.running = true;      
+            minPacketsTimer.expired = false;  
           }
         }
-        if(v47.expiredMaybe == true) // this is being reached after a successful CTS is transmitted, but the last three bytes are 00 00 00. I think it's a bug.
+        if(tpTimer8.expired == true) // this is being reached after a successful CTS is transmitted, but the last three bytes are 00 00 00. I think it's a bug.
         {
           msgBuf[0] = TP_CONN_ABORT;
           msgBuf[1] = TP_TIMEOUT;
@@ -1053,7 +1078,7 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
       if(re_isFilterActive(v34.re_lPGN) == true)
       {
         v34.v20 = d02;
-        v34.activeMaybe = true;
+        v34.running = true;
         v34.v24 = true;
         v34.v26 = re_nSrcAddr;
         v34.v27 = re_nDestAddr;
@@ -1068,8 +1093,8 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
         msgBuf[2] = 1;              
         msgBuf[3] = 0xFF;          
         v94 = Transmit(d38, TPCM_PGN, re_nDestAddr, re_nSrcAddr, &msgBuf[0], 8);
-        v45.timeoutMaybe = betweenPacketsTics;
-        v45.activeMaybe = true;
+        tpTimer6.timeout = betweenPacketsTics;
+        tpTimer6.running = true;
       }
       else // we ignore every transport message not in the filter
       {       
@@ -1085,9 +1110,9 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
       }
     }
   }
-  if(v34.v20 == d02 && v34.activeMaybe == true)
+  if(v34.v20 == d02 && v34.running == true)
   {
-      if(v45.expiredMaybe == true)
+      if(tpTimer6.expired == true)
       {
         f12(d12);
         msgBuf[0] = TP_CONN_ABORT;
@@ -1163,7 +1188,7 @@ byte ARD1939::re_RTSCTSTransmit(byte re_nPriority, long re_lPGN, byte re_nSource
     }
     re_j1939bam->v29 = 0;
     re_j1939bam->v20 = d03;
-    re_j1939bam->activeMaybe = true;
+    re_j1939bam->running = true;
   }
   return j1939Status;
 }
@@ -1174,7 +1199,7 @@ void ARD1939::f11(byte v90)
 	if(v90 == d12)
 	{
 		v33.v20 = d01;
-		v33.activeMaybe = false;
+		v33.running = false;
 		v33.v22 = false;
 		v33.re_lPGN = 0;
 		v33.v26 = GLOBALADDRESS;
@@ -1184,8 +1209,8 @@ void ARD1939::f11(byte v90)
 		v33.re_nMsgLen = 0;
 		v33.v32 = false;
 	}
-	resetTimeoutMaybe(&v40);
-	resetTimeoutMaybe(&v41);
+	_resetTimeout(&tpTimer1);
+	_resetTimeout(&tpTimer2);
 }
 
 void ARD1939::f12(byte v90)
@@ -1193,7 +1218,7 @@ void ARD1939::f12(byte v90)
 	if(v90 == d12)
 	{
 		v34.v20 = d01;
-		v34.activeMaybe = false;
+		v34.running = false;
 		v34.v23 = false;
 		v34.v24 = false;
 		v34.re_lPGN = 0;
@@ -1204,13 +1229,13 @@ void ARD1939::f12(byte v90)
 		v34.re_nMsgLen = 0;
 		v34.v32 = false;	
 	}
-	resetTimeoutMaybe(&v42);
-	resetTimeoutMaybe(&v43);
-	resetTimeoutMaybe(&v44);
-	resetTimeoutMaybe(&v45);
-	resetTimeoutMaybe(&v46);
-	resetTimeoutMaybe(&v47);
-	resetTimeoutMaybe(&v48);
+	_resetTimeout(&minPacketsTimer);
+	_resetTimeout(&tpTimer4);
+	_resetTimeout(&tpTimer5);
+	_resetTimeout(&tpTimer6);
+	_resetTimeout(&tpTimer7);
+	_resetTimeout(&tpTimer8);
+	_resetTimeout(&tpTimer9);
 }
 
 #endif
