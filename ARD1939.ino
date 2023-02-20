@@ -23,16 +23,14 @@
 #include "ARD1939.h"
 
 #define CANCS_PIN 10
-#define MONITOR_BAUD_RATE 19200
-#define SOFTWARE_SERIAL_TX_PIN A1
 
-#ifdef SOFTWARE_SERIAL_TX_PIN
-#include <SoftwareSerial.h>
-SoftwareSerial mySerial(0, SOFTWARE_SERIAL_TX_PIN);
-#else
-#define mySerial Serial
-#endif
 ARD1939 j1939(CANCS_PIN);
+#ifdef SOFTWARE_SERIAL_TX_PIN
+  #include <SoftwareSerial.h>
+  SoftwareSerial moiSerial(0, SOFTWARE_SERIAL_TX_PIN);
+#else
+  #define moiSerial Serial
+#endif
 
 int nCounter = 0;
 
@@ -41,18 +39,24 @@ int nCounter = 0;
 // ------------------------------------------------------------------------
 void setup() {
   // Set the serial interface baud rate
-  mySerial.begin(MONITOR_BAUD_RATE);
-  mySerial.println("ARD1939 Example");
+  moiSerial.begin(MONITOR_BAUD_RATE);
+  moiSerial.println("ARD1939 Example");
 
   // Initialize the J1939 protocol including CAN settings
   if (j1939.Init(SYSTEM_TIME) == 0)
-    mySerial.println("CAN Controller Init OK.");
+    moiSerial.println("CAN Controller Init OK.");
   else
-    mySerial.println("CAN Controller Init Failed.");
+    moiSerial.println("CAN Controller Init Failed.");
 
+  // FIXME this isn't currently working. Based on ESM 2000 vesrion of Saft 6t init().
+  moiSerial.print("j1939Init:");
+  moiSerial.println(j1939.j1939Init());
+  moiSerial.print("j1939 Source Address:");
+  moiSerial.println(j1939.GetSourceAddress());
+  while(true);
   // Set the preferred address and address range
-  j1939.SetPreferredAddress(SA_PREFERRED);
-  j1939.SetAddressRange(ADDRESSRANGEBOTTOM, ADDRESSRANGETOP);
+//  j1939.SetPreferredAddress(SA_PREFERRED);
+  //j1939.SetAddressRange(ADDRESSRANGEBOTTOM, ADDRESSRANGETOP);
 
   // Set the message filter
   //j1939.SetMessageFilter(59999);
@@ -62,15 +66,15 @@ void setup() {
   //j1939.SetMessageFilter(65267);
 
   // Set the NAME
-  j1939.SetNAME(NAME_IDENTITY_NUMBER,
-                NAME_MANUFACTURER_CODE,
-                NAME_FUNCTION_INSTANCE,
-                NAME_ECU_INSTANCE,
-                NAME_FUNCTION,
-                NAME_VEHICLE_SYSTEM,
-                NAME_VEHICLE_SYSTEM_INSTANCE,
-                NAME_INDUSTRY_GROUP,
-                NAME_ARBITRARY_ADDRESS_CAPABLE);
+  // j1939.SetNAME(NAME_IDENTITY_NUMBER,
+  //               NAME_MANUFACTURER_CODE,
+  //               NAME_FUNCTION_INSTANCE,
+  //               NAME_ECU_INSTANCE,
+  //               NAME_FUNCTION,
+  //               NAME_VEHICLE_SYSTEM,
+  //               NAME_VEHICLE_SYSTEM_INSTANCE,
+  //               NAME_INDUSTRY_GROUP,
+  //               NAME_ARBITRARY_ADDRESS_CAPABLE);
 
 }  // end setup
 

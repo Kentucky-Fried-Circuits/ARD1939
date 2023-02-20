@@ -8,7 +8,10 @@
 #define ARD1939VERSION                          3
 
 // Debugger Settings
-#define DEBUG                                  0  // 1 to enable debugging output to serial monitor
+#define DEBUG                                  1  // 1 to enable debugging output to serial monitor
+#define SOFTWARE_SERIAL_TX_PIN              A1 // to use software serial for debugging instead of default Serial
+#define MONITOR_BAUD_RATE 19200
+
 
 #define SA_PREFERRED                      	128
 #define ADDRESSRANGEBOTTOM                	129
