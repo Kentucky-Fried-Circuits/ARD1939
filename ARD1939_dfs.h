@@ -8,12 +8,9 @@
 #define ARD1939VERSION                          3
 
 // Debugger Settings
-#define DEBUG                                  1  // 1 to enable debugging output to serial monitor
-#define SOFTWARE_SERIAL_TX_PIN              A1 // to use software serial for debugging instead of default Serial
-#define MONITOR_BAUD_RATE 19200
+#define DEBUG                                  0  // 1 to enable debugging output to serial monitor
 
-
-#define SA_PREFERRED                      	128
+#define SA_PREFERRED                      	0X10 // must be 0x10 for AMMPS DCS to listen
 #define ADDRESSRANGEBOTTOM                	129
 #define ADDRESSRANGETOP                   	242  // 243 is the preferred address of the Saft 6TE battery, P/N 209188
 

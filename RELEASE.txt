@@ -1,0 +1,21 @@
+
+
+Version 1.1.0
+
+Minor changes
+-------------
+- 2023-03-21 additional reverse engineering. Created library.properties and arbitrarily assigned version 1.1.0
+
+Known Issues
+--------------
+DO NOT USE this version of the library for dual CAN bus boards without first back-porting the bug fixes in the AMMPS MEGA Board version of this library.
+
+
+Previous Versions
+-----------------
+- 2021-11-24 fixed bug where two nodes with identical Name IDs would fail arbitrary address negotiation
+- 2021-11-23 additional reverse engineering
+- 2020-07-22 reverse-engineered variable names.
+- ARD1939_dfs.h used to customize for application
+- must pass CAN CS pin when instantiating
+
