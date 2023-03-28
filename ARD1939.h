@@ -87,6 +87,7 @@ class ARD1939
   public: 
     // Initialization
     ARD1939(byte); // CS_PIN
+	byte begin(int nSystemTime, boolean toggleTermination);
     byte Init(int nSystemTime);
     void SetPreferredAddress(byte nAddr);
     void SetAddressRange(byte nAddrBottom, byte nAddrTop);
@@ -100,7 +101,7 @@ class ARD1939
   
     // Other Application Functions
     void Terminate(void);
-    byte GetSourceAddress(void);
+    byte getSourceAddress(void);
     void DeleteMessageFilter(long lPGN);
     
   private:
@@ -112,7 +113,7 @@ class ARD1939
     void f05(void);
     void resetTimeoutMaybe(struct sTimer*);
     bool re_isTransportProtocol(long*, byte*); //???
-    bool re_IsPeerToPeer(long);
+    bool isPeerToPeer(long);
     bool re_isFilterActive(long);
 
 #if TRANSPORT_PROTOCOL == 1

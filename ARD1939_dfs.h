@@ -5,7 +5,7 @@
 // 1 - ARD1939-Uno/TP
 // 2 - ARD1939-Mega
 // 3 - Custom ARD1939-Nano with Saft_6t
-#define ARD1939VERSION                          3
+#define ARD1939VERSION                          0
 
 // Debugger Settings
 #define DEBUG                                  0  // 1 to enable debugging output to serial monitor
