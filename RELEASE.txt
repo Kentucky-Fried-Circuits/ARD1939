@@ -3,6 +3,7 @@ Version 1.1.1
 Bugfixes
 -----------
 Just some variable name cleanup.
+Rename j1939.cpp to ARD1939.cpp.
 
 Version 1.1.0
 =============

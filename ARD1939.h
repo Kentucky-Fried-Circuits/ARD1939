@@ -97,7 +97,7 @@ class ARD1939
   
     // Read/Write - Check Status
     byte Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* nDestAddr, byte* nSrcAddr, byte* nPriority);
-    byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, byte* pData, int nDataLen);
+    byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, const uint8_t* pData, int nDataLen);
   
     // Other Application Functions
     void Terminate(void);
@@ -122,7 +122,7 @@ class ARD1939
     byte processTransportProtocol(long PGN, byte*, int, byte, byte, byte);
 #endif
 #if TRANSPORT_PROTOCOL_XMIT == 1
-    byte re_RTSCTSTransmit(byte, long, byte, byte, byte*, int);
+    byte rtsCtsTransmit(byte, long, byte, byte, byte*, int);
 #endif
   
 }; // end class ARD1939

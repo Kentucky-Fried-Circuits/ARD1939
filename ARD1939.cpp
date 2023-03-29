@@ -618,19 +618,19 @@ byte ARD1939::compareIds(byte* pMsg, byte* pNameID)
 byte ARD1939::re_Receive(long* re_lPGN, byte* re_pMsg, int* re_nMsgLen, byte* re_nDestAddr, byte* re_nSrcAddr, byte* re_nPriority)
 {
   long v78;
-  long re_lID;
+  long lID;
   *re_lPGN = 0;
   *re_nMsgLen = 0;
   *re_nDestAddr = NULLADDRESS;
   *re_nSrcAddr = NULLADDRESS;
   *re_nPriority = 0;
-  if(canReceive(&re_lID, &re_pMsg[0], re_nMsgLen, _CAN0) == 0) // we have a message
+  if(canReceive(&lID, &re_pMsg[0], re_nMsgLen, _CAN0) == 0) // we have a message
   {
-    v78 = re_lID & 0x1C000000;
+    v78 = lID & 0x1C000000;
     *re_nPriority = (byte)(v78 >> 26);
-    *re_lPGN = re_lID & 0x01FFFF00;
+    *re_lPGN = lID & 0x01FFFF00;
     *re_lPGN = *re_lPGN >> 8;
-    *re_nSrcAddr = (byte)(re_lID & 0x000000FF);
+    *re_nSrcAddr = (byte)(lID & 0x000000FF);
     *re_nDestAddr = GLOBALADDRESS;
     if(isPeerToPeer(*re_lPGN) == true)
     {
@@ -646,22 +646,26 @@ byte ARD1939::re_Receive(long* re_lPGN, byte* re_pMsg, int* re_nMsgLen, byte* re
     return J1939_MSG_NONE;
 }
 
-byte ARD1939::Transmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, byte re_nDestAddress, byte* re_pData, int re_nDataLen)
+/**
+* @brief send a CAN message using canTransmit or rtsCtsTransmit, as appropriate
+* @return the return 0 on success, 1 (ERR) on failure
+*/
+byte ARD1939::Transmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, uint8_t re_nDestAddress, const uint8_t* pData, int nDataLen)
 {
-  long re_lID;
-  if(re_nDataLen > J1939_MSGLEN)
+  long lID;
+  if(nDataLen > J1939_MSGLEN)
     return ERR;
-  re_lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
+  lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
   if(isPeerToPeer(re_lPGN) == true)
-    re_lID = re_lID | ((long)re_nDestAddress << 8);
-  if(re_nDataLen > 8)
+    lID = lID | ((long)re_nDestAddress << 8);
+  if(nDataLen > 8)
 #if TRANSPORT_PROTOCOL_XMIT == 1
-    return re_RTSCTSTransmit(re_nPriority, re_lPGN, nSourceAddress, re_nDestAddress, re_pData, re_nDataLen);
+    return rtsCtsTransmit(re_nPriority, re_lPGN, nSourceAddress, re_nDestAddress, pData, nDataLen);
 #else
     return ERR;
 #endif
   else
-    return canTransmit(re_lID, re_pData, re_nDataLen, _CAN0);
+    return canTransmit(lID, (uint8_t*)pData, nDataLen, _CAN0);
 }
 
 void ARD1939::f05(void)
@@ -1160,7 +1164,7 @@ byte ARD1939::processTransportProtocol(long re_lPGN, byte* re_pMsg, int re_nMsgL
 }
 
 #if TRANSPORT_PROTOCOL_XMIT == 1
-byte ARD1939::re_RTSCTSTransmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, byte re_nDestAddress, byte* re_pData, int re_nDataLen) // re_DataLen was v77
+byte ARD1939::rtsCtsTransmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, byte re_nDestAddress, byte* pData, int nDataLen) // re_DataLen was v77
 {
   UNUSED(re_nPriority);
   
@@ -1172,23 +1176,23 @@ byte ARD1939::re_RTSCTSTransmit(byte re_nPriority, long re_lPGN, byte nSourceAdd
     re_j1939bam = &v34;
   else 
     re_j1939bam = &v33;
-  if(re_j1939bam->v20 != d01 || re_nDataLen > J1939_MSGLEN)
+  if(re_j1939bam->v20 != d01 || nDataLen > J1939_MSGLEN)
     j1939Status = ERR;
   else
   {
-//    for(re_i = 0; re_i < re_nDataLen; re_i++) // TEST
- //     re_j1939bam->re_pFullMessage[re_i] = re_pData[re_i]; //copy the data to re_j1939bam
-	memcpy(re_j1939bam, re_pData, re_nDataLen);
-    for(re_i = re_nDataLen; re_i < (re_nDataLen + 7); re_i++)
+//    for(re_i = 0; re_i < nDataLen; re_i++) // TEST
+ //     re_j1939bam->re_pFullMessage[re_i] = pData[re_i]; //copy the data to re_j1939bam
+	memcpy(re_j1939bam, pData, nDataLen);
+    for(re_i = nDataLen; re_i < (nDataLen + 7); re_i++)
     {
       if(re_i >= J1939_MSGLEN) break;
       re_j1939bam->re_pFullMessage[re_i] = 0xFF;
     }
     re_j1939bam->re_lPGN = re_lPGN;
-    re_j1939bam->re_nMsgLen = re_nDataLen;
+    re_j1939bam->re_nMsgLen = nDataLen;
     re_j1939bam->v26 = nSourceAddress;
     re_j1939bam->v27 = re_nDestAddress;
-    re_i = re_nDataLen;
+    re_i = nDataLen;
     re_j1939bam->v28 = 0;
     while(re_i > 0)
     {
