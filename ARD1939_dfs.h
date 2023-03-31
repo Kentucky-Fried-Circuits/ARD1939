@@ -8,6 +8,9 @@
 #define ARD1939VERSION                          0
 
 // Debugger Settings
+#ifdef DEBUG
+#undef DEBUG
+#endif
 #define DEBUG                                  0  // 1 to enable debugging output to serial monitor
 
 #define SA_PREFERRED                      	0X10 // must be 0x10 for AMMPS DCS to listen
