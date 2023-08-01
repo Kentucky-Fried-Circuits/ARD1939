@@ -18,8 +18,8 @@
 #define re_PF_REQUEST                   0xEA
 #define d48                   0x00
 
-#define re_PGN_ADDRESS_CLAIMED               	0x00EE00
-#define re_PGN_ADDRESS_CLAIMED_BROADCAST         	0x00EEFF // not used?
+#define PGN_ADDRESS_CLAIM               	0x00EE00
+#define PGN_ADDRESS_CLAIM_BROADCAST         	0x00EEFF // not used?
 #define CANNOT_CLAIM_SA_LSB                   0x00
 #define CANNOT_CLAIM_SA_2ND            	0xEE
 #define CANNOT_CLAIM_SA_MSB                   0x00
@@ -75,7 +75,7 @@ unsigned char j1939Name[] =
 #define re_NUM_TP_PGNS                     4
 long re_TP_PGNS[] =
 {
-  re_PGN_ADDRESS_CLAIMED,
+  PGN_ADDRESS_CLAIM,
   d34,
   TPCM_PGN,
   re_TPDT_PGN
@@ -203,6 +203,11 @@ ARD1939::ARD1939(byte _CS)
 	*/
 }
 
+byte ARD1939::GetAddressClaimed()
+{
+    return nAddressClaimed;
+}
+
 byte ARD1939::Init(int nSystemTime)
 {
   int re_i;
@@ -260,8 +265,17 @@ void ARD1939::Terminate(void)
 
 /**
 * @brief the main j1939 function. Calls the receive function and handles J1939 protocol as required
+* All marameters are populated by Operate() for return to the caller
 * @param nMsgId is the J1939 protocol
 * @param lPGN the pgn
+* @param pMsg pointer to message data array
+* @param nMsgLen number of bytes in pMsg
+* @param nDestAddr target recpient of message
+* @param nSrcAddr sender of message
+* @param nPriority j1939 message priority
+*
+* @return byte, one of ADDRESSCLAIM_INIT, ADDRESSCLAIM_INPROGRESS, ADDRESSCLAIM_FINISHED, NORMALDATATRAFFIC, ADDRESSCLAIM_FAILED
+
 **/
 byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* nDestAddr, byte* nSrcAddr, byte* nPriority)
 {
@@ -289,19 +303,20 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
           {
             if(*nDestAddr == GLOBALADDRESS)
             {
-              Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.nSourceAddress, GLOBALADDRESS,
+              Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.nSourceAddress, GLOBALADDRESS,
                             &j1939Name[NAME_ID], 8);
             }
             else if(*nDestAddr == j1939Stat.nSourceAddress)
             {
-              Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.nSourceAddress, *nSrcAddr,
+              Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.nSourceAddress, *nSrcAddr,
                             &j1939Name[NAME_ID], 8);
             }
           }
         }
         break;
       
-      case re_PGN_ADDRESS_CLAIMED:
+      case PGN_ADDRESS_CLAIM:
+        nAddressClaimed = *nSrcAddr; // save so upper levels of OSI stack know someone new is on the bus
         if(*nSrcAddr == j1939Stat.nSourceAddress) // we received a message from our address. We need to tell them to try a different address by sending our own Address Claimed message
         {
           compareIdsRetVal = compareIds(&pMsg[0], &j1939Name[NAME_ID]);
@@ -310,14 +325,14 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
             case 0: // The bugger has the exact same ID as me.
 				DEBUG_PRINTLN(F("~298:Op():PGN==PGN_ADDRESS_CLAIMED:compareIds==0")); // we fail first here when another 0x80 comes online
 				// instead of failing, we should tell them to bugger off, just like case 2
-				Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.nSourceAddress,
+				Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.nSourceAddress,
 				GLOBALADDRESS, &j1939Name[NAME_ID], 8);
               break;
 // #if TRANSPORT_PROTOCOL == 1          
               // f11(d12);
               // f12(d12);
 // #endif           
-              // Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
+              // Transmit(d28, PGN_ADDRESS_CLAIM, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
               // j1939Stat.canOperateMaybe = false;
               // j1939Stat.addressClaimFailedMaybe = true;
               // j1939Status = ADDRESSCLAIM_FAILED;
@@ -332,7 +347,7 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
               claimAddressMaybe(*nSrcAddr, &j1939Name[NAME_ID]);
               break;          
             case 2:  
-              Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.nSourceAddress,
+              Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.nSourceAddress,
                             GLOBALADDRESS, &j1939Name[NAME_ID], 8);
               break;
           }
@@ -398,7 +413,7 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
           }
         }
         break;
-      case re_PGN_ADDRESS_CLAIMED:
+      case PGN_ADDRESS_CLAIM:
         break;
       case d34:
         break;
@@ -406,7 +421,7 @@ byte ARD1939::Operate(byte* nMsgId, long* lPGN, byte* pMsg, int* nMsgLen, byte* 
     if(v39.expiredMaybe == true)
     {
       resetTimeoutMaybe(&v39);
-       Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS,
+       Transmit(d28, PGN_ADDRESS_CLAIM, NULLADDRESS, GLOBALADDRESS,
                     &j1939Name[NAME_ID], 8);
     }
   }
@@ -436,7 +451,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
     if(v39.expiredMaybe == true)
     {
         resetTimeoutMaybe(&v39);
-        Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
+        Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.myAddr, GLOBALADDRESS,
                       &j1939Name[NAME_ID], 8);
         v38.timeoutMaybe = timeout250msTics;
         v38.activeMaybe = true;
@@ -449,7 +464,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
     {
       if(getAnotherMyAddr() == true)
       {
-        Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
+        Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.myAddr, GLOBALADDRESS,
                       &j1939Name[NAME_ID], 8);
         v38.timeoutMaybe = timeout250msTics;
         v38.activeMaybe = true;
@@ -458,7 +473,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
       else
       {
 		DEBUG_PRINTLN(F("~439:claimAddr():defaultStat:v07==false:getAnother==false"));
-        Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
+        Transmit(d28, PGN_ADDRESS_CLAIM, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
         j1939Stat.canOperateMaybe = false;
         j1939Stat.addressClaimFailedMaybe = true;
         j1939Status = ADDRESSCLAIM_FAILED;
@@ -509,7 +524,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
               // f11(d12);
               // f12(d12);
 // #endif           
-              // Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
+              // Transmit(d28, PGN_ADDRESS_CLAIM, NULLADDRESS, GLOBALADDRESS, &j1939Name[NAME_ID], 8);
               // j1939Stat.canOperateMaybe = false;
               // j1939Stat.addressClaimFailedMaybe = true;
               // j1939Status = ADDRESSCLAIM_FAILED;
@@ -522,7 +537,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
 #endif           
               if(getAnotherMyAddr() == true)
               {
-                Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
+                Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.myAddr, GLOBALADDRESS,
                               &j1939Name[NAME_ID], 8);
                 v38.timeoutMaybe = timeout250msTics;
                 v38.activeMaybe = true;
@@ -531,7 +546,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
               {
 				DEBUG_PRINTLN(F("~510:claimAddr():else:v07==false:!v38expired:myAddr=stat.myAddr:compareIds==1:getAnother==false"));
 
-                Transmit(d28, re_PGN_ADDRESS_CLAIMED, NULLADDRESS, GLOBALADDRESS,
+                Transmit(d28, PGN_ADDRESS_CLAIM, NULLADDRESS, GLOBALADDRESS,
                               &j1939Name[NAME_ID], 8);
                 j1939Stat.canOperateMaybe = false;
                 j1939Stat.addressClaimFailedMaybe = true;
@@ -540,7 +555,7 @@ byte ARD1939::claimAddressMaybe(byte myAddr, byte* v91)
               break;
 
             case 2:
-              Transmit(d28, re_PGN_ADDRESS_CLAIMED, j1939Stat.myAddr, GLOBALADDRESS,
+              Transmit(d28, PGN_ADDRESS_CLAIM, j1939Stat.myAddr, GLOBALADDRESS,
                             &j1939Name[NAME_ID], 8);
               v38.timeoutMaybe = timeout250msTics;
               v38.activeMaybe = true;

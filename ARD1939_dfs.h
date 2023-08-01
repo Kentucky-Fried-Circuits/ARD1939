@@ -30,7 +30,7 @@
 #define NAME_VEHICLE_SYSTEM               	0x7F
 #define NAME_VEHICLE_SYSTEM_INSTANCE      	0
 #define NAME_INDUSTRY_GROUP               	0x01 // 0x01 on highway
-#define NAME_ARBITRARY_ADDRESS_CAPABLE    	0x01 // 1 - yes, 2 - no
+#define NAME_ARBITRARY_ADDRESS_CAPABLE    	0x01 // single bit. 1 - yes, 0 - cannot alter w/o intervention of external process
 
 // System Settings
 #define SYSTEM_TIME                             1    // Milliseconds per tic (or vice versa)
