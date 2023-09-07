@@ -15,10 +15,10 @@
 #ifdef DEBUG
 #undef DEBUG
 #endif
-#define DEBUG                                  0  // 1 to enable debugging output to serial monitor
+#define DEBUG                                  2  // 1 to enable debugging output to serial monitor
 
-#define SA_PREFERRED                      	0X10 // must be 0x10 for AMMPS DCS to listen
-#define ADDRESSRANGEBOTTOM                	129
+#define SA_PREFERRED                      	130 
+#define ADDRESSRANGEBOTTOM                	130
 #define ADDRESSRANGETOP                   	242  // 243 is the preferred address of the Saft 6TE battery, P/N 209188
 
 #define GLOBALADDRESS                    	255

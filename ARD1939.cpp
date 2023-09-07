@@ -56,8 +56,10 @@
 #define UNUSED(x) (void)(x) // this macro is used to supress unused-parameter warnings where I intend to leave them unused
 
 #if DEBUG != 0
+#ifdef ARD_MCP_CAN
 #include <SoftwareSerial.h>
 SoftwareSerial mySerial(A0, A1);
+#endif
 #endif
 
 struct re_structFilter
@@ -280,7 +282,10 @@ byte ARD1939::Init(int nSystemTime)
 #endif
 #ifdef ARD_TWAI
   // Initialize the CAN controller
-  return (twai_driver_install(_g_config, _t_config, &f_config));
+  ESP_LOGD(TAG, "Init(): nSystemTime:%d", nSystemTime);
+  ESP_ERROR_CHECK(twai_driver_install(_g_config, _t_config, &f_config));
+  ESP_RETURN_ON_ERROR(twai_start(), TAG, "Init():failed to start");
+  return ESP_OK;
 #endif
 }
 
@@ -290,7 +295,7 @@ void ARD1939::Terminate(void)
   Init(d15 / v50); // d15/v50 is a hack to recover the original nSystemTime.
 #endif
 #ifdef ARD_TWAI
-
+  twai_driver_uninstall();
 #endif
 }
 
@@ -319,6 +324,7 @@ byte ARD1939::Operate(byte *nMsgId, long *lPGN, byte *pMsg, int *nMsgLen, byte *
     if (*nDestAddr != j1939Stat.nSourceAddress && *nDestAddr != GLOBALADDRESS)
       *nMsgId = J1939_MSG_NETWORKDATA;
   }
+  // DEBUG_ESPLOG2(TAG, "canOp:%d", j1939Stat.canOperateMaybe);
   if (j1939Stat.canOperateMaybe == true)
   {
     j1939Status = NORMALDATATRAFFIC;
@@ -421,6 +427,7 @@ byte ARD1939::Operate(byte *nMsgId, long *lPGN, byte *pMsg, int *nMsgLen, byte *
   else if (j1939Stat.addressClaimFailedMaybe == true)
   {
     DEBUG_PRINTLN(F("~363:Op():stat.claimFailed")); // we fail here on subsequent calls to Operate()
+    DEBUG_ESPLOG1(TAG, "~363:Op()");
     j1939Status = ADDRESSCLAIM_FAILED;
     switch (*lPGN)
     {
@@ -453,6 +460,7 @@ byte ARD1939::Operate(byte *nMsgId, long *lPGN, byte *pMsg, int *nMsgLen, byte *
   }
   else
   {
+    DEBUG_PRINTLN("claiming address");
     j1939Status = claimAddressMaybe(*nSrcAddr, &pMsg[0]);
   }
   return j1939Status;
@@ -717,9 +725,11 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
   {
     // pull message from arg
     const twai_message_t *tx_msg = static_cast<twai_message_t *>(arg);
-    ESP_LOGD(TAG, "twait_transmit_task() id:%d", tx_msg->identifier);
+    ESP_LOGD(TAG, "twai_transmit_task() id:0x%x extd:%d len:%d msg[]:0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x",
+             tx_msg->extd, tx_msg->identifier, tx_msg->data_length_code, tx_msg->data[0], tx_msg->data[1], tx_msg->data[2], tx_msg->data[3], tx_msg->data[4], tx_msg->data[5], tx_msg->data[6], tx_msg->data[7]);
     twai_transmit(tx_msg, portMAX_DELAY);
-    ESP_LOGD(TAG, "twait_transmit_task() complete");
+    ESP_LOGD(TAG, "twai_transmit_task() complete");
+    xSemaphoreGive(transmit_sem); // Rudimentary synch. to prevent spawning lots of tasks. TODO change to a queue.
     vTaskDelete(NULL);
   }
 #endif
@@ -750,11 +760,15 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     // spawn a transmit task and continue
     ESP_RETURN_ON_ERROR(xSemaphoreTake(transmit_sem, pdMS_TO_TICKS(1000)), "TAG", "Trasmit aborted: xSemaphoreTake failed"); // TODO #define this wait time
     twai_message_t tx_msg;
+    tx_msg.extd = 1;
+    tx_msg.rtr = 0;
     tx_msg.identifier = lID;
     tx_msg.data_length_code = nDataLen;
     memcpy(tx_msg.data, pData, nDataLen);
-    esp_err_t ret = xTaskCreate(twai_transmit_task, "TWAI_tx", 4096, &tx_msg, 7, NULL);
-    xSemaphoreGive(transmit_sem);
+    ESP_LOGD(TAG, "Transmit():transmitting");
+    esp_err_t ret = twai_transmit(&tx_msg, portMAX_DELAY);
+     // esp_err_t ret = xTaskCreate(twai_transmit_task, "TWAI_tx", 4096, &tx_msg, 7, NULL); TODO change to a queue and a task
+    ESP_LOGD(TAG, "Transmit() result:%s(%d)", esp_err_to_name(ret), ret);
     return ret;
 #endif
   }
@@ -878,8 +892,7 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
   byte ARD1939::begin(int sysTime, boolean toggleTermination)
   {
     byte status = Init(sysTime);
-    DEBUG_PRINT(F("j9~786"
-                  :));
+    DEBUG_PRINT(F("j9~786"));
     DEBUG_PRINTLN(status);
     SetPreferredAddress(SA_PREFERRED);
     SetAddressRange(ADDRESSRANGEBOTTOM, ADDRESSRANGETOP);

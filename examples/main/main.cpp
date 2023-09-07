@@ -137,10 +137,6 @@ static const twai_message_t stop_message = {{.ss = 0x00}, .identifier = ID_MASTE
 // ** lazy globals
 esp_err_t can_err = ESP_OK; // a lazy global flag for a local purpose
 
-static QueueHandle_t tx_task_queue;
-static QueueHandle_t rx_task_queue;
-static SemaphoreHandle_t stop_ping_sem;
-static SemaphoreHandle_t ctrl_task_sem;
 static SemaphoreHandle_t done_sem;
 
 typedef enum
@@ -167,34 +163,11 @@ static const char *TAG_CAN = "example CAN";
 
 /* forward declarations*/
 static void twai_receive_task(void *arg);
-static void twai_transmit_task(void *arg);
-static void twai_control_task(void *arg);
+// static void twai_transmit_task(void *arg);
 
 /* instantiations */
 SX1509 io;
-ARD1939 j1939(&g_config, &t_config); // TODO should be (
-
-// /**
-//  * @brief i2c controller initialization
-//  */
-// static esp_err_t i2c_begin(void)
-// {
-//     int i2c_controller_port = I2C_CONTROLLER_NUM;
-
-//     i2c_config_t conf = {
-//         .mode = I2C_MODE_MASTER,
-//         .sda_io_num = ESP32_SDA,
-//         .scl_io_num = ESP32_SCL,
-//         .sda_pullup_en = GPIO_PULLUP_ENABLE,
-//         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-//         .master = {
-//             .clk_speed = I2C_CONTROLLER_FREQ_HZ},
-//         .clk_flags = 0};
-
-//     i2c_param_config(i2c_controller_port, &conf);
-
-//     return i2c_driver_install(i2c_controller_port, conf.mode, I2C_CONTROLLER_RX_BUF_DISABLE, I2C_CONTROLLER_TX_BUF_DISABLE, 0);
-// }
+ARD1939 j1939(&g_config, &t_config);
 
 /**
  * @brief emulate Arduino pinMode()
@@ -221,17 +194,6 @@ esp_err_t pinMode(gpio_num_t pin, unsigned long pin_mode)
     }
     return gpio_config(&io_config);
 }
-
-// esp_err_t pinModeOutput(gpio_num_t pin)
-// {
-//     gpio_config_t io_config;
-//     io_config.pin_bit_mask = (1ULL << pin);
-//     io_config.mode = GPIO_MODE_OUTPUT;
-//     io_config.pull_up_en = GPIO_PULLUP_DISABLE;
-//     io_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
-//     io_config.intr_type = GPIO_INTR_DISABLE;
-//     return gpio_config(&io_config);
-// }
 
 /**
  * @brief block until a key is pressed on stdin
@@ -287,38 +249,45 @@ esp_err_t test_can()
 
     // enable can xceiver
     ESP_ERROR_CHECK(io.pinMode(SX1509_STBY, OUTPUT));
-    // io.digitalWrite(SX1509_STBY, HIGH); // low-power (off) mode
     io.digitalWrite(SX1509_STBY, LOW); // enable CAN chip in high-speed mode
 
     // Create tasks, queues, and semaphores
-    // rx_task_queue = xQueueCreate(1, sizeof(rx_task_action_t));
-    // tx_task_queue = xQueueCreate(1, sizeof(tx_task_action_t));
-    // ctrl_task_sem = xSemaphoreCreateBinary();
-    // stop_ping_sem = xSemaphoreCreateBinary();
-    // done_sem = xSemaphoreCreateBinary();
-    // xTaskCreatePinnedToCore(twai_receive_task, "TWAI_rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
+    done_sem = xSemaphoreCreateBinary();
+    ESP_LOGD(TAG_CAN, "claiming done_sem");
+    xTaskCreatePinnedToCore(twai_receive_task, "TWAI_rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
     // xTaskCreatePinnedToCore(twai_transmit_task, "TWAI_tx", 4096, NULL, TX_TASK_PRIO, NULL, tskNO_AFFINITY);
-    // xTaskCreatePinnedToCore(twai_control_task, "TWAI_ctrl", 4096, NULL, CTRL_TSK_PRIO, NULL, tskNO_AFFINITY);
+    ESP_LOGD(TAG_CAN, "task(s) created");
+
     j1939.Init(1000 / CONFIG_FREERTOS_HZ > 0 ? 1000 / CONFIG_FREERTOS_HZ : 1);
+    j1939.SetPreferredAddress(SA_PREFERRED);
+    j1939.SetAddressRange(ADDRESSRANGEBOTTOM, ADDRESSRANGETOP);
+    j1939.SetNAME(NAME_IDENTITY_NUMBER,
+                    NAME_MANUFACTURER_CODE,
+                    NAME_FUNCTION_INSTANCE,
+                    NAME_ECU_INSTANCE,
+                    NAME_FUNCTION,
+                    NAME_VEHICLE_SYSTEM,
+                    NAME_VEHICLE_SYSTEM_INSTANCE,
+                    NAME_INDUSTRY_GROUP,
+                    NAME_ARBITRARY_ADDRESS_CAPABLE);
+    // j1939.SetMessageFilter(PGN_ECU_IDENTIFICATION_INFORMATION); // we OPT IN to RTS CTS messages
+    // All Tranport PGNs must be explicitly filtered *in*
+ 
+    ESP_LOGD(TAG_CAN, "j1939.Init() complete");
+    ESP_LOGI(TAG_CAN, "Start sending messages. They will be echoed below. A to abort");
 
-    // Install TWAI driver
-    // ESP_ERROR_CHECK(twai_driver_install(&g_config, &t_config, &f_config));
-    // ESP_LOGD(TAG_CAN, "Driver installed");
-
-    xSemaphoreGive(ctrl_task_sem);           // Start control task
+    xSemaphoreGive(done_sem);                // okay receive task can start
     xSemaphoreTake(done_sem, portMAX_DELAY); // Wait for completion
     // Uninstall TWAI driver
+    ESP_ERROR_CHECK(twai_stop());
     ESP_ERROR_CHECK(twai_driver_uninstall());
     ESP_LOGD(TAG_CAN, "Driver uninstalled");
     // Cleanup
-    vQueueDelete(rx_task_queue);
-    vQueueDelete(tx_task_queue);
-    vSemaphoreDelete(ctrl_task_sem);
-    vSemaphoreDelete(stop_ping_sem);
+    j1939.Terminate();
     vSemaphoreDelete(done_sem);
     if (can_err == ESP_OK)
     {
-        ESP_LOGW(TAG_CAN, "If there is a message in PCAN-View with ID 01Ah then press P. Otherwise press any other key");
+        ESP_LOGW(TAG_CAN, "If the messages you sent in PCAN-View were displayed, then press P. Otherwise press any other key");
         int mychar = press_any_key();
         if (mychar != 'P' && mychar != 'p')
         {
@@ -410,12 +379,11 @@ esp_err_t test_led()
         return ret;
     }
     ESP_LOGW(TAG, "TEST LED: Verify red LED is blinking");
-    ESP_LOGW(TAG, "Press any key to continue");
-    press_any_key();
+    // ESP_LOGW(TAG, "Press any key to continue");
+    // press_any_key();
     ESP_LOGD(TAG, "test_led(): complete");
     return ret;
 }
-
 
 /**
  * @brief verify we are communicating with the onboard sx1509
@@ -456,177 +424,109 @@ esp_err_t test_sx1509()
  */
 static void twai_receive_task(void *arg)
 {
+    struct
+    {
+        byte nMsgId;
+        long lPGN;
+        byte pMsg[8];
+        int nMsgLen;
+        byte nDestAddr;
+        byte nSrcAddr;
+        byte nPriority;
+    } rxMsg;
+    memset(&rxMsg, 0, sizeof(rxMsg));
+
+    const char* j1939Statuses[4] = {"INIT", "IN PROGRESS", "NORMAL", "FAILED"};
+    byte j1939Status, oldJ1939Status;
+    oldJ1939Status = ADDRESSCLAIM_INIT;
+    char myChar;
+    if( xSemaphoreTake(done_sem, 1000) != pdTRUE) {
+        ESP_LOGE(TAG_CAN, "Could not take done_sem!");
+    };
     while (1)
     {
-        rx_task_action_t action;
-        xQueueReceive(rx_task_queue, &action, portMAX_DELAY);
-
-        if (action == RX_RECEIVE_PING_RESP)
+        // Listen for messages. Check nMsgId for result
+        j1939Status = j1939.Operate(&rxMsg.nMsgId, &rxMsg.lPGN, rxMsg.pMsg, &rxMsg.nMsgLen, &rxMsg.nDestAddr, &rxMsg.nSrcAddr, &rxMsg.nPriority);
+        if (j1939Status != oldJ1939Status)
         {
-            // Listen for ping response from slave
-            while (1)
-            {
-                twai_message_t rx_msg;
-                twai_receive(&rx_msg, portMAX_DELAY);
-                if (rx_msg.identifier == ID_SLAVE_PING_RESP)
-                {
-                    ESP_LOGD(TAG_CAN, "ID_SLAVE_PING_RESP %d received", rx_msg.identifier);
-                    xSemaphoreGive(stop_ping_sem);
-                    xSemaphoreGive(ctrl_task_sem);
-                    break;
-                }
-            }
+            ESP_LOGD(TAG_CAN, "rev task():new J1939Status:%s (%d)", j1939Statuses[j1939Status], j1939Status);
+            oldJ1939Status = j1939Status;
         }
-        else if (action == RX_RECEIVE_DATA)
+        if (rxMsg.nMsgId != J1939_MSG_NONE)
+            ESP_LOGD(TAG_CAN, "recv task(): j1939Status:%s (%d) ID:%d", j1939Statuses[j1939Status], j1939Status, rxMsg.nMsgId);
+        if (rxMsg.nMsgId == J1939_MSG_APP)
         {
-            // Receive data messages from slave
-            uint32_t data_msgs_rec = 0;
-            int myChar;
-            ESP_LOGW(TAG_CAN, "Press A to abort CAN test");
-            can_err = ESP_OK;
-            while (data_msgs_rec < NO_OF_DATA_MSGS)
-            {
-                twai_message_t rx_msg;
-                // twai_receive(&rx_msg, portMAX_DELAY);
-                twai_receive(&rx_msg, pdMS_TO_TICKS(10));
-                if (rx_msg.identifier == ID_SLAVE_DATA)
-                {
-                    ESP_LOGD(TAG_CAN, "ID_SLAVE_DATA %d received", rx_msg.identifier);
-                    uint32_t data = 0;
-                    for (int i = 0; i < rx_msg.data_length_code; i++)
-                    {
-                        data |= (rx_msg.data[i] << (i * 8));
-                    }
-                    ESP_LOGD(TAG_CAN, "Received data value %" PRIu32, data);
-                    data_msgs_rec++;
-                }
-                myChar = getchar();
-                if (myChar == char('A') || myChar == char('a')) // abort test
-                {
-                    can_err = ESP_FAIL;
-                    break;
-                }
-            }
-            xSemaphoreGive(ctrl_task_sem);
-        }
-        else if (action == RX_RECEIVE_STOP_RESP)
-        {
-            // // Listen for stop response from slave
-            // while (1)
+            ESP_LOGD(TAG_CAN, "received MsgId:%d PGN:0x%lx len:%d msg[0:1]:0x%x 0x%x dest:0x%x src:0x%x pri:0x%x",
+                     rxMsg.nMsgId, rxMsg.lPGN, rxMsg.pMsg[0], rxMsg.pMsg[1], rxMsg.nMsgLen, rxMsg.nDestAddr, rxMsg.nSrcAddr, rxMsg.nPriority);
+            // myChar = getchar();
+            // if (myChar == 'A') // abort test
             // {
-            //     twai_message_t rx_msg;
-            //     twai_receive(&rx_msg, portMAX_DELAY);
-            //     if (rx_msg.identifier == ID_SLAVE_STOP_RESP)
-            //     {
-            xSemaphoreGive(ctrl_task_sem);
-            //         break;
-            //     }
+            //     xSemaphoreGive(done_sem);
+            //     break;
             // }
-        }
-        else if (action == RX_TASK_EXIT)
-        {
-            break;
-        }
-    }
-    vTaskDelete(NULL);
-}
-
-static void twai_transmit_task(void *arg)
-{
-    // ping_message.ss = 1; // FIXME can't figure out how to initialize this flag in the definition
-    while (1)
-    {
-        tx_task_action_t action;
-        xQueueReceive(tx_task_queue, &action, portMAX_DELAY);
-
-        if (action == TX_SEND_PINGS)
-        {
-            // Repeatedly transmit pings
-            ESP_LOGD(TAG_CAN, "Transmitting ping");
-
-            xSemaphoreTake(stop_ping_sem, portMAX_DELAY); // TEST
-            ESP_LOGD(TAG_CAN, "got stop_ping_sem");
-            for (int i = 0; i < 10; i++)
-            {
-                twai_transmit(&ping_message, portMAX_DELAY);
-                printf(".");
-                fflush(stdout);
-                DELAY(PING_PERIOD_MS);
-            }
-            printf("\n");
-        }
-        else if (action == TX_SEND_START_CMD)
-        {
-            // Transmit start command to slave
-            twai_transmit(&start_message, portMAX_DELAY);
-            ESP_LOGD(TAG_CAN, "Transmitted start command");
-        }
-        else if (action == TX_SEND_STOP_CMD)
-        {
-            // Transmit stop command to slave
-            twai_transmit(&stop_message, portMAX_DELAY);
-            ESP_LOGD(TAG_CAN, "Transmitted stop command");
-        }
-        else if (action == TX_TASK_EXIT)
-        {
-            break;
         }
         else
         {
-            ESP_LOGE(TAG_CAN, "unexpected action:%i", action);
-            break;
+            vTaskDelay(pdMS_TO_TICKS(50));
+            if (rxMsg.nMsgId == J1939_MSG_NONE) {
+                printf("N");
+            } else {
+                printf(".");
+            }
         }
     }
-    ESP_LOGD(TAG_CAN, "transmit task complete");
     vTaskDelete(NULL);
 }
 
-static void twai_control_task(void *arg)
+// TODO needs rewritten
+static void twai_transmit_task(void *arg)
 {
-    xSemaphoreTake(ctrl_task_sem, portMAX_DELAY);
-    tx_task_action_t tx_action;
-    rx_task_action_t rx_action;
+    // // ping_message.ss = 1; // FIXME can't figure out how to initialize this flag in the definition
+    // while (1)
+    // {
+    //     tx_task_action_t action;
+    //     xQueueReceive(tx_task_queue, &action, portMAX_DELAY);
 
-    for (int iter = 0; iter < NO_OF_ITERS; iter++)
-    {
-        ESP_ERROR_CHECK(twai_start());
-        ESP_LOGD(TAG_CAN, "Driver started");
+    //     if (action == TX_SEND_PINGS)
+    //     {
+    //         // Repeatedly transmit pings
+    //         ESP_LOGD(TAG_CAN, "Transmitting ping");
 
-        // Start transmitting pings, and listen for ping response
-        // tx_action = TX_SEND_PINGS;
-        // rx_action = RX_RECEIVE_PING_RESP;
-        // xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-        // xQueueSend(rx_task_queue, &rx_action, portMAX_DELAY);
-
-        // Send Start command to slave, and receive data messages
-        // xSemaphoreTake(ctrl_task_sem, portMAX_DELAY);
-        tx_action = TX_SEND_START_CMD;
-        rx_action = RX_RECEIVE_DATA;
-        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-        xQueueSend(rx_task_queue, &rx_action, portMAX_DELAY);
-
-        // Send Stop command to slave when enough data messages have been received. Wait for stop response
-        xSemaphoreTake(ctrl_task_sem, portMAX_DELAY);
-        ESP_LOGD(TAG_CAN, "Sending stop command");
-        tx_action = TX_SEND_STOP_CMD;
-        rx_action = RX_RECEIVE_STOP_RESP;
-        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-        xQueueSend(rx_task_queue, &rx_action, portMAX_DELAY);
-
-        xSemaphoreTake(ctrl_task_sem, portMAX_DELAY);
-        ESP_ERROR_CHECK(twai_stop());
-        ESP_LOGI(TAG, "Driver stopped");
-        DELAY(ITER_DELAY_MS);
-    }
-    // Stop TX and RX tasks
-    tx_action = TX_TASK_EXIT;
-    rx_action = RX_TASK_EXIT;
-    xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-    xQueueSend(rx_task_queue, &rx_action, portMAX_DELAY);
-
-    // Delete Control task
-    xSemaphoreGive(done_sem);
-    vTaskDelete(NULL);
+    //         xSemaphoreTake(stop_ping_sem, portMAX_DELAY); // TEST
+    //         ESP_LOGD(TAG_CAN, "got stop_ping_sem");
+    //         for (int i = 0; i < 10; i++)
+    //         {
+    //             twai_transmit(&ping_message, portMAX_DELAY);
+    //             printf(".");
+    //             fflush(stdout);
+    //             DELAY(PING_PERIOD_MS);
+    //         }
+    //         printf("\n");
+    //     }
+    //     else if (action == TX_SEND_START_CMD)
+    //     {
+    //         // Transmit start command to slave
+    //         twai_transmit(&start_message, portMAX_DELAY);
+    //         ESP_LOGD(TAG_CAN, "Transmitted start command");
+    //     }
+    //     else if (action == TX_SEND_STOP_CMD)
+    //     {
+    //         // Transmit stop command to slave
+    //         twai_transmit(&stop_message, portMAX_DELAY);
+    //         ESP_LOGD(TAG_CAN, "Transmitted stop command");
+    //     }
+    //     else if (action == TX_TASK_EXIT)
+    //     {
+    //         break;
+    //     }
+    //     else
+    //     {
+    //         ESP_LOGE(TAG_CAN, "unexpected action:%i", action);
+    //         break;
+    //     }
+    // }
+    // ESP_LOGD(TAG_CAN, "transmit task complete");
+    // vTaskDelete(NULL);
 }
 
 extern "C" void app_main(void)
@@ -636,7 +536,7 @@ extern "C" void app_main(void)
     esp_log_level_set("*", LOG_MODE);
     esp_log_level_set(TAG, ESP_LOG_DEBUG);
     esp_log_level_set("gpio", ESP_LOG_WARN);
-    esp_log_level_set("intr_alloc", ESP_LOG_WARN);
+    esp_log_level_set("intr_alloc", ESP_LOG_INFO);
     esp_log_level_set("sx1509", ESP_LOG_DEBUG);
     esp_log_level_set("i2cdev", ESP_LOG_DEBUG);
     if (LOG_MODE < ESP_LOG_DEBUG)
@@ -644,7 +544,6 @@ extern "C" void app_main(void)
         esp_log_level_set("system_api", ESP_LOG_WARN);
     }
     esp_log_level_set(TAG, LOG_MODE); // set *TAG to debug. This works, but I'd rather use the LOG_LOCAL_LEVEL macro. Also didn't work to put this in main() TEST
-    esp_err_t ret;
     bool failed = false;
 
     test_hello_world();
