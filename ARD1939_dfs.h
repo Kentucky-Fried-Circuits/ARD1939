@@ -7,6 +7,7 @@
 // 3 - Custom ARD1939-Nano with Saft_6t
 #define ARD1939VERSION                          0
 
+// CAN contoller
 // Debugger Settings
 #ifdef DEBUG
 #undef DEBUG

@@ -20,7 +20,22 @@ Minor changes
 Known Issues
 --------------
 DO NOT USE this version of the library for dual CAN bus boards without first back-porting the bug fixes in the AMMPS MEGA Board version of this library.
-
+I2C scan for example not working. Run from here:
+I (481) 93-0000220: Sending reset passed
+I (483) 93-0000220: I2C begin passed
+E (484) 93-0000220: FAILED! I2C Scan: unexpected device found at 0x 3
+E (504) 93-0000220: FAILED! I2C Scan: unknown device found
+E (504) 93-0000220: I2C Scan failed
+Same main.app, same hardware from 93-0000220_05-1000193:
+E (940) 93-0000220: FAILED! I2C Scan: unexpected device found at 0x 3
+D (955) 93-0000220: I2C Scan: found something at Magnethereal Display DFRobot 1602 LCD address 0x3e
+D (956) 93-0000220: I2C Scan: found something at SX1509 address 0x3f
+D (967) 93-0000220: I2C Scan: found something at Magnethereal Display DFRobot 1602 backlight address 0x60
+D (973) 93-0000220: I2C Scan: found something at DS3232 clock address 0x68
+D (980) 93-0000220: I2C Scan: found something at off-board SX1509 address 0x71
+D (988) 93-0000220: I2C Scan: complete
+E (990) 93-0000220: FAILED! I2C Scan: unknown device found
+E (996) 93-0000220: I2C Scan failed
 
 Previous Versions
 -----------------
