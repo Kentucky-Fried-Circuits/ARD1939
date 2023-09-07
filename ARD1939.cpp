@@ -295,6 +295,7 @@ void ARD1939::Terminate(void)
   Init(d15 / v50); // d15/v50 is a hack to recover the original nSystemTime.
 #endif
 #ifdef ARD_TWAI
+  twai_stop();
   twai_driver_uninstall();
 #endif
 }
