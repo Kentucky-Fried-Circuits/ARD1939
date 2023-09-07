@@ -38,6 +38,7 @@
 
 // 3rd party drivers
 #include <sx1509.hpp>
+#include "ARD1939.h"
 
 /* definitions */
 // Board to use
@@ -125,10 +126,9 @@ const uint8_t SX1509_DE = 11;
 #define ID_SLAVE_DATA 0x0B1
 #define ID_SLAVE_PING_RESP 0x0B2
 
-// static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_25KBITS();
-static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_250KBITS();
-static const twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(ESP32_CAN_TX, ESP32_CAN_RX, TWAI_MODE_NORMAL);
+static twai_timing_config_t t_config = TWAI_TIMING_CONFIG_250KBITS();
+// static const twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+static twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(ESP32_CAN_TX, ESP32_CAN_RX, TWAI_MODE_NORMAL);
 
 static const twai_message_t ping_message = {{.ss = 0x01}, .identifier = ID_MASTER_PING, .data_length_code = 0, .data = {0, 0, 0, 0, 0, 0, 0, 0}};
 static const twai_message_t start_message = {{.ss = 0x00}, .identifier = ID_MASTER_START_CMD, .data_length_code = 0, .data = {0, 0, 0, 0, 0, 0, 0, 0}};
@@ -159,12 +159,8 @@ typedef enum
     RX_TASK_EXIT,
 } rx_task_action_t;
 
-// sd card
-#define MOUNT_POINT "/sdcard"
-
-static const char *TAG = "93-0000220";
-static const char *TAG_CAN = "93-0000220 CAN";
-// static const char *TAG_UI = "93-0000220 UI";
+static const char *TAG = "example";
+static const char *TAG_CAN = "example CAN";
 
 // macros
 #define DELAY(X) vTaskDelay(pdMS_TO_TICKS(X)) // emulate Arduino delay()
@@ -176,6 +172,7 @@ static void twai_control_task(void *arg);
 
 /* instantiations */
 SX1509 io;
+ARD1939 j1939(&g_config, &t_config); // TODO should be (
 
 // /**
 //  * @brief i2c controller initialization
@@ -294,18 +291,19 @@ esp_err_t test_can()
     io.digitalWrite(SX1509_STBY, LOW); // enable CAN chip in high-speed mode
 
     // Create tasks, queues, and semaphores
-    rx_task_queue = xQueueCreate(1, sizeof(rx_task_action_t));
-    tx_task_queue = xQueueCreate(1, sizeof(tx_task_action_t));
-    ctrl_task_sem = xSemaphoreCreateBinary();
-    stop_ping_sem = xSemaphoreCreateBinary();
-    done_sem = xSemaphoreCreateBinary();
-    xTaskCreatePinnedToCore(twai_receive_task, "TWAI_rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(twai_transmit_task, "TWAI_tx", 4096, NULL, TX_TASK_PRIO, NULL, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(twai_control_task, "TWAI_ctrl", 4096, NULL, CTRL_TSK_PRIO, NULL, tskNO_AFFINITY);
+    // rx_task_queue = xQueueCreate(1, sizeof(rx_task_action_t));
+    // tx_task_queue = xQueueCreate(1, sizeof(tx_task_action_t));
+    // ctrl_task_sem = xSemaphoreCreateBinary();
+    // stop_ping_sem = xSemaphoreCreateBinary();
+    // done_sem = xSemaphoreCreateBinary();
+    // xTaskCreatePinnedToCore(twai_receive_task, "TWAI_rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(twai_transmit_task, "TWAI_tx", 4096, NULL, TX_TASK_PRIO, NULL, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(twai_control_task, "TWAI_ctrl", 4096, NULL, CTRL_TSK_PRIO, NULL, tskNO_AFFINITY);
+    j1939.Init(1000 / CONFIG_FREERTOS_HZ > 0 ? 1000 / CONFIG_FREERTOS_HZ : 1);
 
     // Install TWAI driver
-    ESP_ERROR_CHECK(twai_driver_install(&g_config, &t_config, &f_config));
-    ESP_LOGD(TAG_CAN, "Driver installed");
+    // ESP_ERROR_CHECK(twai_driver_install(&g_config, &t_config, &f_config));
+    // ESP_LOGD(TAG_CAN, "Driver installed");
 
     xSemaphoreGive(ctrl_task_sem);           // Start control task
     xSemaphoreTake(done_sem, portMAX_DELAY); // Wait for completion
@@ -340,65 +338,6 @@ esp_err_t test_hello_world()
     ESP_LOGI(TAG, "****************************************************************************************************************************");
     return ESP_OK;
 }
-
-// FIXME this may need reworked to ESP V4
-#ifdef TEST_ETHERNET
-esp_err_t test_ethernet()
-{
-    ESP_LOGD(TAG_ETHERNET, "started");
-    eth_err = ESP_OK;
-    eth_done_sem = xSemaphoreCreateBinary();
-
-    // Create new default instance of esp-netif for Ethernet
-    // Initialize TCP/IP network interface (should be called only once in application)
-    ESP_ERROR_CHECK(esp_netif_init());
-    // Create default event loop that running in background
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-    eth_netif = esp_netif_new(&cfg);
-
-    // Init MAC and PHY configs to default
-    eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
-    eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
-
-    phy_config.phy_addr = 0;           // CONFIG_EXAMPLE_ETH_PHY_ADDR;
-    phy_config.reset_gpio_num = -1;    // CONFIG_EXAMPLE_ETH_PHY_RST_GPIO;
-    mac_config.smi_mdc_gpio_num = 23;  // CONFIG_EXAMPLE_ETH_MDC_GPIO;
-    mac_config.smi_mdio_gpio_num = 18; // CONFIG_EXAMPLE_ETH_MDIO_GPIO;
-    esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
-
-    esp_eth_phy_t *phy = esp_eth_phy_new_lan87xx(&phy_config);
-    esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
-    esp_eth_handle_t eth_handle = NULL;
-    ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
-    /* attach Ethernet driver to TCP/IP stack */
-    ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
-
-    // Register user defined event handers
-    ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &eth_ip_event_handler, NULL));
-
-    /* start Ethernet driver state machine */
-    ESP_ERROR_CHECK(esp_eth_start(eth_handle));
-
-    // ** Now block until we get an IP address
-    ESP_LOGW(TAG_ETHERNET, "Waiting for IP address. Press A to abort");
-    int mychar;
-    while (xSemaphoreTake(eth_done_sem, 0) != pdTRUE)
-    {
-        mychar = getchar();
-        if (mychar == 'A' || mychar == 'a')
-        {
-            eth_err = ESP_FAIL;
-            break;
-        }
-        vTaskDelay(1);
-    }
-    ESP_LOGD(TAG_ETHERNET, "completed");
-    // TODO should we be cleaning up after ourselves?
-    return eth_err;
-}
-#endif
 
 esp_err_t test_i2c_scan()
 {
@@ -477,123 +416,6 @@ esp_err_t test_led()
     return ret;
 }
 
-/**
- * @brief test RS485 hardware by echoing to an external terminal
- *
- */
-esp_err_t test_rs485()
-{
-#ifdef TEST_RS485
-    /* Configure parameters of an UART driver,
-     * communication pins and install the driver */
-    uart_config_t uart_config = {
-        .baud_rate = RS_UART_BAUD_RATE,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB,
-    };
-    int intr_alloc_flags = 0;
-    ESP_LOGI(TAG_RS485, "UART %i (%i,%i,%c)", RS_UART_PORT_NUM, uart_config.baud_rate, uart_config.data_bits + 5, (uart_config.parity == 0) ? 'N' : 'Y');
-
-#if CONFIG_UART_ISR_IN_IRAM
-    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
-#endif
-
-    ESP_ERROR_CHECK(uart_driver_install(RS_UART_PORT_NUM, RS_BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
-    ESP_ERROR_CHECK(uart_param_config(RS_UART_PORT_NUM, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(RS_UART_PORT_NUM, ESP32_DI, ESP32_RO, -1, -1));
-    // ESP_ERROR_CHECK(uart_set_mode(RS_UART_PORT_NUM, UART_MODE_RS485_HALF_DUPLEX)); // TEST
-
-    // Configure a temporary buffer for the incoming data
-    uint8_t *data = (uint8_t *)malloc(RS_BUF_SIZE);
-    int written = 0;
-    time_t now, last_time;
-    last_time = time(&now);
-    char beat[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    int beater = 0;
-    int beats = 8;
-    // set up sx1509 for DE and RE pins
-    // ESP_ERROR_CHECK(io.begin(I2C_SX1509_ADDR, ESP32_NRESET, ESP32_IO_NINT));
-    // ESP_ERROR_CHECK(io.clock(INTERNAL_CLOCK_2MHZ, 4));
-    ESP_ERROR_CHECK(io.pinMode(SX1509_DE, OUTPUT));  // active high
-    ESP_ERROR_CHECK(io.pinMode(SX1509_RE, OUTPUT));  // active low
-    ESP_ERROR_CHECK(io.setupBlink(SX1509_DE, 0, 0)); // disable blink
-    ESP_ERROR_CHECK(io.setupBlink(SX1509_RE, 0, 0)); // disable blink
-    // For RS485 compatibility, hold DE low / RE low unless we're transmitting
-    ESP_ERROR_CHECK(io.writePin(SX1509_DE, HIGH)); // TEST enABLE transmit
-    ESP_ERROR_CHECK(io.writePin(SX1509_RE, LOW));  // enable receive
-    // Set RS485 half duplex mode
-
-    ESP_ERROR_CHECK(uart_set_mode(RS_UART_PORT_NUM, UART_MODE_RS485_HALF_DUPLEX));
-    // uart_context_t uart_context;
-    // p_uart_obj[RS_UART_PORT_NUM]->rs485_conf.rx_busy_tx_en = 0; // don't send while receiving => collision avoidance
-    // UART1.rs485_conf.tx_rx_en = 1;      // loopback (1), so collision detection works
-    // ESP_ERROR_CHECK(uart_set_rx_timeout(RS_UART_PORT_NUM, 100));
-    //        ESP_ERROR_CHECK(io.writePin(SX1509_DE, LOW)); // disable transmit
-    ESP_ERROR_CHECK(io.writePin(SX1509_DE, HIGH)); // e&nable transmit TEST
-
-    ESP_LOGW(TAG, "Connect Cable xxx from right (outer) RJ12 port to DTECH USB adapter and DTECH USB adapter to Computer.");
-    ESP_LOGW(TAG, "Start Putty, select Dtech's COM port, set to 9600 baud, 8 bits, no parity, no flow control.");
-    ESP_LOGW(TAG, "Press any key when ready");
-    press_any_key();
-    ESP_LOGW(TAG, "You should see the numbers 0 to 9 appear in the Putty terminal.");
-    ESP_LOGW(TAG, "Type in the Putty terminal window. Anything you type should also appear in the terminal. ");
-    ESP_LOGW(TAG, "In this window, press 'P' if the numbers appear and your typing is displayed. Otherwise press any key.");
-    int mychar = -1;
-    vTaskDelay(pdMS_TO_TICKS(1000)); // time to get finger off key TEST
-
-    while (mychar <= 0)
-    {
-        // Read data from the UART.
-        int len = uart_read_bytes(RS_UART_PORT_NUM, data, (RS_BUF_SIZE - 1), 20 / portTICK_PERIOD_MS);
-        // Write data back to the UART
-#ifdef MONITOR_ONLY
-        ESP_LOGI(TAG_RS485, "recv:%x %x", data[0], data[1]);
-#else
-        ESP_ERROR_CHECK(io.writePin(SX1509_RE, HIGH)); // disable receive
-        // ESP_ERROR_CHECK(io.writePin(SX1509_DE, HIGH)); // TEST enable transmit
-        DELAY(5);
-        written = uart_write_bytes(RS_UART_PORT_NUM, (const char *)data, len);
-        // ESP_ERROR_CHECK(io.writePin(SX1509_DE, LOW)); // TEST disable transmit
-        // ESP_ERROR_CHECK(io.writePin(SX1509_RE, LOW)); // enable receive
-        if (len)
-        {
-            data[len] = '\0';
-            ESP_LOGI(TAG_RS485, "Recv str: %s, bytes written: %i", (char *)data, written);
-        }
-        if (last_time != time(&now))
-        { // heartbeat once per second
-            // ESP_ERROR_CHECK(io.writePin(SX1509_RE, HIGH)); // disable receive
-            // ESP_ERROR_CHECK(io.writePin(SX1509_DE, HIGH)); // enable transmit TEST
-            // DELAY(15);
-            written = uart_write_bytes(RS_UART_PORT_NUM, &beat[beater], beats);
-            // ESP_ERROR_CHECK(io.writePin(SX1509_DE, LOW)); // disable transmit
-            // ESP_ERROR_CHECK(io.writePin(SX1509_RE, LOW)); // enable receive TEST
-            ESP_LOGD(TAG_RS485, "heartbeat first char:%c bytes written:%d", beat[beater], written);
-            beater = (beater + beats) % (27 - beats);
-            last_time = time(&now);
-        }
-#endif // MONITOR_ONLY
-        bool collided = false;
-        if (uart_get_collision_flag(RS_UART_PORT_NUM, &collided))
-        {
-            ESP_LOGI(TAG_RS485, "colision");
-        }
-        mychar = getchar();
-        // ESP_LOGD(TAG, "mychar: %d", mychar);
-        ESP_ERROR_CHECK(io.writePin(SX1509_RE, LOW)); // enable receive
-        DELAY(5);
-    }
-    if (mychar != char('P') && mychar != char('p'))
-    {
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-#endif // TEST_RS485
-    return ESP_OK;
-}
 
 /**
  * @brief verify we are communicating with the onboard sx1509

@@ -7,7 +7,10 @@
 // 3 - Custom ARD1939-Nano with Saft_6t
 #define ARD1939VERSION                          0
 
-// CAN contoller
+// CAN contoller. Choose one
+// #define ARD_MCP_CAN
+#define ARD_TWAI // ESP-IDF twai driver
+
 // Debugger Settings
 #ifdef DEBUG
 #undef DEBUG

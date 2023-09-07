@@ -1,8 +1,22 @@
 #ifndef ARD1939_H
 #define ARD1939_H
 
+#include "ARD1939_dfs.h" // user config parameters. Unfortunately, there's no good way in the Arduino IDE to move these parameters 
+#ifdef ARD_MCP_CAN
 #include "mcp_can.h"
-#include "ARD1939_dfs.h" // user config parameters. Unfortunately, there's no good way in the Arduino IDE to move these parameters to your sketch
+#else
+#ifdef ARD_TWAI
+#include "driver/twai.h"
+#ifndef byte
+typedef uint8_t byte;
+#endif
+#ifndef boolean
+typedef bool boolean;
+#endif
+#else
+#error a CAN controller driver must be defined in ARD1939_dfs.h
+#endif
+#endif
 
 // J1939 Settings
 #if ARD1939VERSION == 0
@@ -119,8 +133,13 @@ struct sTimer
 class ARD1939
 {
 public:
-  // Initialization
+// Initialization
+#ifdef ARD_MCP_CAN
   ARD1939(byte); // CS_PIN
+#endif
+#ifdef ARD_TWAI
+  ARD1939(twai_general_config_t *, twai_timing_config_t *);
+#endif
   byte begin(int nSystemTime, boolean toggleTermination);
   void DeleteMessageFilter(long lPGN);
   byte getSourceAddress(void);
@@ -154,16 +173,22 @@ public:
 
 private:
   byte nAddressClaimed; // address of last address_claimed message
+#ifdef ARD_MCP_CAN
   MCP_CAN *_CAN0;
+#endif
+#ifdef ARD_TWAI
+  twai_general_config_t *_g_config;
+  twai_timing_config_t *_t_config;
+#endif
   byte claimAddressMaybe(byte, byte *);
   bool getAnotherMyAddr(void); // TEST
   byte compareIds(byte *theirID, byte *myID);
-  byte re_Receive(long *, byte *, int *, byte *, byte *, byte *);
+  byte receive(long *, byte *, int *, byte *, byte *, byte *);
   void f05(void);
   void resetTimeoutMaybe(struct sTimer *);
-  bool re_isTransportProtocol(long *, byte *); //???
+  bool isTransportProtocol(long *, byte *); //???
   bool isPeerToPeer(long);
-  bool re_isFilterActive(long);
+  bool isFilterActive(long);
 
 #if TRANSPORT_PROTOCOL == 1
   void f11(byte);
@@ -177,4 +202,4 @@ private:
 
 }; // end class ARD1939
 
-#endif
+#endif //ARD1939_H
