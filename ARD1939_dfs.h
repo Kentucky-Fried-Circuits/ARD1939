@@ -7,18 +7,21 @@
 // 3 - Custom ARD1939-Nano with Saft_6t
 #define ARD1939VERSION                          0
 
-// CAN contoller. Choose one
-// #define ARD_MCP_CAN
+// CAN contoller. Choose one, maybe define before you include this file.
 #define ARD_TWAI // ESP-IDF twai driver
+//#define ARD_MCP_CAN
+#if (!defined(ARD_MCP_CAN) && !defined(ARD_TWAI))
+#error Either ARD_MCP_CAN or ARD_TWAI must be defined to specify your CAN controller
+#endif
 
 // Debugger Settings
 #ifdef DEBUG
 #undef DEBUG
 #endif
-#define DEBUG                                  0  // 1 to enable debugging output to serial monitor
+#define DEBUG                                  2  // 1 to enable debugging output to serial monitor
 
-#define SA_PREFERRED                      	0X10 // must be 0x10 for AMMPS DCS to listen
-#define ADDRESSRANGEBOTTOM                	129
+#define SA_PREFERRED                      	130 
+#define ADDRESSRANGEBOTTOM                	130
 #define ADDRESSRANGETOP                   	242  // 243 is the preferred address of the Saft 6TE battery, P/N 209188
 
 #define GLOBALADDRESS                    	255

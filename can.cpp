@@ -21,6 +21,7 @@ int nReadPointer;
 
 // ------------------------------------------------------------------------
 // Initialize the CAN controller
+// return 0 for success, 1 for failure
 // ------------------------------------------------------------------------
 byte canInit(MCP_CAN *CAN0)
 {

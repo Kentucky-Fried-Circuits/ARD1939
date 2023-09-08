@@ -70,13 +70,38 @@ typedef bool boolean;
 
 #ifndef DEBUG_PRINT
 #if DEBUG == 1
+#ifdef ARD_MCP_CAN
 #define DEBUG_PRINT(x) mySerial.print(x);
 #define DEBUG_PRINTLN(T) mySerial.println(T);
 #define DEBUG_PRINTLNFMT(x, y) mySerial.println(x, y);
+#endif
+#ifdef ARD_TWAI
+#warning "ARD_TWAI debugging enabled"
+// #ifdef F // FIXME can't find a way to nullify the F() macro
+// #undef F
+// #define F(x) sizeof(x)
+// #endif
+#define DEBUG_PRINT(x) printf(x);
+#define DEBUG_PRINTLN(T) ESP_LOGD("ARD1939d", T);
+#define DEBUG_PRINTLNFMT(x, y) ESP_LOGD("ARD1939d", "0x%x", x);
+#endif
 #else
 #define DEBUG_PRINT(x) ;
 #define DEBUG_PRINTLN(T) ;
 #define DEBUG_PRINTLNFMT(x, y) ;
+#endif
+#endif
+#if DEBUG == 2
+#ifdef ARD_TWAI
+#define DEBUG_ESPLOG1(a, b) ESP_LOGD(a,b)
+#define DEBUG_ESPLOG2(a,b,c) ESP_LOGD(a,b,c)
+#define DEBUG_ESPLOG3(a,b,c,d) ESP_LOGD(a,b,c,d)
+#define DEBUG_ESPLOG(a,b,c,d,e) ESP_LOGD(a,b,c,d,e)
+#else
+#define DEBUG_ESPLOG1(a, b) 
+#define DEBUG_ESPLOG2(a, b, c) 
+#define DEBUG_ESPLOG3(a, b, c, d) 
+#define DEBUG_ESPLOG(a, b, c, d, e) 
 #endif
 #endif
 #if DEBUG == 1
@@ -151,8 +176,21 @@ public:
    */
   byte GetAddressClaimed();
 
+/**
+ * @brief initialize variables and install CAN driver
+ * 
+ * @param nSystemTime - ms per tick
+ * @return byte - result of canInit() or twai_driver_install(). 0/ESP_OK for success.
+ */
   byte Init(int nSystemTime);
-  // Read/Write - Check Status
+
+  /**
+   * @brief receive messages and handle j1939 protocol
+   * @param byte *nMsgId - J1939 message type (J1939_MSG_APP|J1939_MSG_NETWORKDATA|J1939_MSG_PROTOCOL|J1939_MSG_NONE)
+   * J1939_MSG_APP means a normal application message
+   * @return J1939 Status
+   * 
+   */
   byte Operate(byte *nMsgId, long *lPGN, byte *pMsg, int *nMsgLen, byte *nDestAddr, byte *nSrcAddr, byte *nPriority);
 
   /**
