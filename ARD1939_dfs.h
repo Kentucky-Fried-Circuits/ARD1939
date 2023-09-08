@@ -8,10 +8,10 @@
 #define ARD1939VERSION                          0
 
 // CAN contoller. Choose one, maybe define before you include this file.
-//#define ARD_TWAI // ESP-IDF twai driver
-#ifndef ARD_TWAI
-#pragma message("ARD1939 using MCP_CAN as default controller")
-#define ARD_MCP_CAN // default
+#define ARD_TWAI // ESP-IDF twai driver
+//#define ARD_MCP_CAN
+#if (!defined(ARD_MCP_CAN) && !defined(ARD_TWAI))
+#error Either ARD_MCP_CAN or ARD_TWAI must be defined to specify your CAN controller
 #endif
 
 // Debugger Settings
