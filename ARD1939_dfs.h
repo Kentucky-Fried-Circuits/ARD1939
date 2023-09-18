@@ -20,9 +20,9 @@
 #endif
 #define DEBUG                                  2  // 1 to enable debugging output to serial monitor
 
-#define SA_PREFERRED                      	130 
-#define ADDRESSRANGEBOTTOM                	130
-#define ADDRESSRANGETOP                   	242  // 243 is the preferred address of the Saft 6TE battery, P/N 209188
+#define SA_PREFERRED                      	8 
+#define ADDRESSRANGEBOTTOM                	8
+#define ADDRESSRANGETOP                   	127  // 80 is HyPR 6000; we'll avoid it. See connectors spreadsheet for Solar Stik assignments.
 
 #define GLOBALADDRESS                    	255
 #define NULLADDRESS                      	254
