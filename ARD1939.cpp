@@ -208,7 +208,7 @@ static const char *TAG = "ARD1939";
 #endif
 
 #ifdef ARD_MCP_CAN
-    ARD1939::ARD1939(byte _CS)
+ARD1939::ARD1939(byte _CS)
 {
   _CAN0 = new MCP_CAN(_CS); // Set CS to pin 9/10
   /*	SPICS = _CS;  // the MCP_CAN constructor already does this. why do it again?
@@ -222,11 +222,10 @@ ARD1939::ARD1939(twai_general_config_t *g_config, twai_timing_config_t *t_config
 {
   _g_config = g_config;
   _t_config = t_config;
-  transmit_sem = xSemaphoreCreateBinary();
 }
 #endif
 
-    byte ARD1939::GetAddressClaimed()
+byte ARD1939::GetAddressClaimed()
 {
   return nAddressClaimed;
 }
@@ -281,8 +280,11 @@ byte ARD1939::Init(int nSystemTime)
   return canInit(_CAN0);
 #endif
 #ifdef ARD_TWAI
+  transmit_sem = xSemaphoreCreateBinary();
+  assert(!(transmit_sem == NULL));
+  xSemaphoreGive(transmit_sem);
   // Initialize the CAN controller
-  ESP_LOGD(TAG, "Init(): nSystemTime:%d", nSystemTime);
+  ESP_LOGD(TAG, "Init(): nSystemTime:%d transmit_sem:%p", nSystemTime, transmit_sem);
   ESP_ERROR_CHECK(twai_driver_install(_g_config, _t_config, &f_config));
   ESP_RETURN_ON_ERROR(twai_start(), TAG, "Init():failed to start");
   return ESP_OK;
@@ -721,19 +723,19 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
       return J1939_MSG_NONE;
   }
 
-#ifdef ARD_TWAI
-  static void twai_transmit_task(void *arg)
-  {
-    // pull message from arg
-    const twai_message_t *tx_msg = static_cast<twai_message_t *>(arg);
-    ESP_LOGD(TAG, "twai_transmit_task() id:0x%x extd:%d len:%d msg[]:0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x",
-             tx_msg->extd, tx_msg->identifier, tx_msg->data_length_code, tx_msg->data[0], tx_msg->data[1], tx_msg->data[2], tx_msg->data[3], tx_msg->data[4], tx_msg->data[5], tx_msg->data[6], tx_msg->data[7]);
-    twai_transmit(tx_msg, portMAX_DELAY);
-    ESP_LOGD(TAG, "twai_transmit_task() complete");
-    xSemaphoreGive(transmit_sem); // Rudimentary synch. to prevent spawning lots of tasks. TODO change to a queue.
-    vTaskDelete(NULL);
-  }
-#endif
+  // #ifdef ARD_TWAI
+  //   static void twai_transmit_task(void *arg)
+  //   {
+  //     // pull message from arg
+  //     const twai_message_t *tx_msg = static_cast<twai_message_t *>(arg);
+  //     ESP_LOGD(TAG, "twai_transmit_task() id:0x%x extd:%d len:%d msg[]:0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x",
+  //              tx_msg->extd, tx_msg->identifier, tx_msg->data_length_code, tx_msg->data[0], tx_msg->data[1], tx_msg->data[2], tx_msg->data[3], tx_msg->data[4], tx_msg->data[5], tx_msg->data[6], tx_msg->data[7]);
+  //     twai_transmit(tx_msg, portMAX_DELAY);
+  //     ESP_LOGD(TAG, "twai_transmit_task() complete");
+  //     xSemaphoreGive(transmit_sem); // Rudimentary synch. to prevent spawning lots of tasks. TODO change to a queue.
+  //     vTaskDelete(NULL);
+  //   }
+  // #endif
 
   /**
    * @brief send a CAN message using canTransmit or rtsCtsTransmit, as appropriate
@@ -744,6 +746,13 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     long lID;
     if (nDataLen > J1939_MSGLEN)
       return ERR;
+#ifdef ARD_TWAI
+    twai_message_t tx_msg;
+    // make this function thread safe
+    assert(!(transmit_sem == NULL));
+    esp_err_t ret = xSemaphoreTake(transmit_sem, pdMS_TO_TICKS(100)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT; // TODO make timeout a #define
+    ESP_RETURN_ON_ERROR(ret, TAG, "Transmit(): PGN:0x%04x dest:0x%02x xSemaphoreTake:%s(%d)", (uint32_t)re_lPGN, re_nDestAddress, esp_err_to_name(ret), ret);
+#endif
     lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
     if (isPeerToPeer(re_lPGN) == true)
       lID = lID | ((long)re_nDestAddress << 8);
@@ -754,22 +763,20 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     return ERR;
 #endif
     else
-    #ifdef ARD_MCP_CAN
+#ifdef ARD_MCP_CAN
       return canTransmit(lID, (uint8_t *)pData, nDataLen, _CAN0);
-    #endif
-    #ifdef ARD_TWAI
-    // spawn a transmit task and continue
-    ESP_RETURN_ON_ERROR(xSemaphoreTake(transmit_sem, pdMS_TO_TICKS(1000)), "TAG", "Trasmit aborted: xSemaphoreTake failed"); // TODO #define this wait time
-    twai_message_t tx_msg;
+#endif
+#ifdef ARD_TWAI
     tx_msg.extd = 1;
     tx_msg.rtr = 0;
     tx_msg.identifier = lID;
     tx_msg.data_length_code = nDataLen;
     memcpy(tx_msg.data, pData, nDataLen);
     ESP_LOGD(TAG, "Transmit():transmitting");
-    esp_err_t ret = twai_transmit(&tx_msg, portMAX_DELAY);
-     // esp_err_t ret = xTaskCreate(twai_transmit_task, "TWAI_tx", 4096, &tx_msg, 7, NULL); TODO change to a queue and a task
+    ret = twai_transmit(&tx_msg, portMAX_DELAY);
+    // esp_err_t ret = xTaskCreate(twai_transmit_task, "TWAI_tx", 4096, &tx_msg, 7, NULL); TODO change to a queue and a task
     ESP_LOGD(TAG, "Transmit() result:%s(%d)", esp_err_to_name(ret), ret);
+    xSemaphoreGive(transmit_sem);
     return ret;
 #endif
   }
