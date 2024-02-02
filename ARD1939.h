@@ -1,7 +1,7 @@
 #ifndef ARD1939_H
 #define ARD1939_H
 
-#include "ARD1939_dfs.h" // user config parameters. Unfortunately, there's no good way in the Arduino IDE to move these parameters 
+#include "ARD1939_dfs.h" // user config parameters. Unfortunately, there's no good way in the Arduino IDE to move these parameters
 #ifdef ARD_MCP_CAN
 #include "mcp_can.h"
 #else
@@ -93,15 +93,15 @@ typedef bool boolean;
 #endif
 #if DEBUG == 2
 #ifdef ARD_TWAI
-#define DEBUG_ESPLOG1(a, b) ESP_LOGD(a,b)
-#define DEBUG_ESPLOG2(a,b,c) ESP_LOGD(a,b,c)
-#define DEBUG_ESPLOG3(a,b,c,d) ESP_LOGD(a,b,c,d)
-#define DEBUG_ESPLOG(a,b,c,d,e) ESP_LOGD(a,b,c,d,e)
+#define DEBUG_ESPLOG1(a, b) ESP_LOGD(a, b)
+#define DEBUG_ESPLOG2(a, b, c) ESP_LOGD(a, b, c)
+#define DEBUG_ESPLOG3(a, b, c, d) ESP_LOGD(a, b, c, d)
+#define DEBUG_ESPLOG(a, b, c, d, e) ESP_LOGD(a, b, c, d, e)
 #else
-#define DEBUG_ESPLOG1(a, b) 
-#define DEBUG_ESPLOG2(a, b, c) 
-#define DEBUG_ESPLOG3(a, b, c, d) 
-#define DEBUG_ESPLOG(a, b, c, d, e) 
+#define DEBUG_ESPLOG1(a, b)
+#define DEBUG_ESPLOG2(a, b, c)
+#define DEBUG_ESPLOG3(a, b, c, d)
+#define DEBUG_ESPLOG(a, b, c, d, e)
 #endif
 #endif
 #if DEBUG == 1
@@ -176,12 +176,12 @@ public:
    */
   byte GetAddressClaimed();
 
-/**
- * @brief initialize variables and install CAN driver
- * 
- * @param nSystemTime - ms per tick
- * @return byte - result of canInit() or twai_driver_install(). 0/ESP_OK for success.
- */
+  /**
+   * @brief initialize variables and install CAN driver
+   *
+   * @param nSystemTime - ms per tick
+   * @return byte - result of canInit() or twai_driver_install(). 0/ESP_OK for success.
+   */
   byte Init(int nSystemTime);
 
   /**
@@ -189,7 +189,7 @@ public:
    * @param byte *nMsgId - J1939 message type (J1939_MSG_APP|J1939_MSG_NETWORKDATA|J1939_MSG_PROTOCOL|J1939_MSG_NONE)
    * J1939_MSG_APP means a normal application message
    * @return J1939 Status
-   * 
+   *
    */
   byte Operate(byte *nMsgId, long *lPGN, byte *pMsg, int *nMsgLen, byte *nDestAddr, byte *nSrcAddr, byte *nPriority);
 
@@ -208,6 +208,11 @@ public:
   // Other Application Functions
   void Terminate(void);
   byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, const uint8_t *pData, int nDataLen);
+
+  /*Check if the twai receive queue is empty*/
+#ifdef ARD_TWAI
+  bool isRxQueueEmpty();
+#endif
 
 private:
   byte nAddressClaimed; // address of last address_claimed message
@@ -240,4 +245,4 @@ private:
 
 }; // end class ARD1939
 
-#endif //ARD1939_H
+#endif // ARD1939_H
