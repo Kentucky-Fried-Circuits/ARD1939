@@ -209,11 +209,6 @@ public:
   void Terminate(void);
   byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, const uint8_t *pData, int nDataLen);
 
-  /*Check if the twai receive queue is empty*/
-#ifdef ARD_TWAI
-  bool isRxQueueEmpty();
-#endif
-
 private:
   byte nAddressClaimed; // address of last address_claimed message
 #ifdef ARD_MCP_CAN

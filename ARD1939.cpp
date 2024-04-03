@@ -302,11 +302,6 @@ void ARD1939::Terminate(void)
 #endif
 }
 
-bool ARD1939::isRxQueueEmpty()
-{
-  return get_rx_queue_size() > 0;
-}
-
 /**
 * @brief the main j1939 function. Calls the receive function and handles J1939 protocol as required
 * All marameters are populated by Operate() for return to the caller.
