@@ -751,7 +751,7 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     // make this function thread safe
     assert(!(transmit_sem == NULL));
     esp_err_t ret = xSemaphoreTake(transmit_sem, pdMS_TO_TICKS(100)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT; // TODO make timeout a #define
-    ESP_RETURN_ON_ERROR(ret, TAG, "Transmit(): PGN:0x%04x dest:0x%02x xSemaphoreTake:%s(%d)", (uint32_t)re_lPGN, re_nDestAddress, esp_err_to_name(ret), ret);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Transmit(): PGN:0x%04lu dest:0x%02x xSemaphoreTake:%s(%d)", (uint32_t)re_lPGN, re_nDestAddress, esp_err_to_name(ret), ret);
 #endif
     lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
     if (isPeerToPeer(re_lPGN) == true)
