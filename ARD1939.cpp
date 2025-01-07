@@ -741,7 +741,7 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
    * @brief send a CAN message using canTransmit or rtsCtsTransmit, as appropriate
    * @return the return 0 on success, 1 (ERR) on failure (or ESP_ERR_TIMEOUT)
    */
-  byte ARD1939::Transmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, uint8_t re_nDestAddress, const uint8_t *pData, int nDataLen)
+  byte ARD1939::Transmit(byte re_nPriority, long re_lPGN, byte nSourceAddress, uint8_t re_nDestAddress, const uint8_t *pData, int nDataLen, int ndataPage)
   {
     long lID;
     if (nDataLen > J1939_MSGLEN)
@@ -754,6 +754,8 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     ESP_RETURN_ON_ERROR(ret, TAG, "Transmit(): PGN:0x%04x dest:0x%02x xSemaphoreTake:%s(%d)", (uint32_t)re_lPGN, re_nDestAddress, esp_err_to_name(ret), ret);
 #endif
     lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
+    if(ndataPage) //if data page is not 0 but other value. 
+      lID += ndataPage << 24;
     if (isPeerToPeer(re_lPGN) == true)
       lID = lID | ((long)re_nDestAddress << 8);
     if (nDataLen > 8)

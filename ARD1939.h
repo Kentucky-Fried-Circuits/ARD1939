@@ -207,7 +207,7 @@ public:
 
   // Other Application Functions
   void Terminate(void);
-  byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, const uint8_t *pData, int nDataLen);
+  byte Transmit(byte nPriority, long lPGN, byte nSourceAddress, byte nDestAddress, const uint8_t *pData, int nDataLen, int ndataPage = 0);
 
 private:
   byte nAddressClaimed; // address of last address_claimed message
