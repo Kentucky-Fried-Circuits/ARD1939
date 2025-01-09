@@ -754,8 +754,8 @@ byte ARD1939::receive(long *re_lPGN, byte *re_pMsg, int *re_nMsgLen, byte *re_nD
     ESP_RETURN_ON_ERROR(ret, TAG, "Transmit(): PGN:0x%04x dest:0x%02x xSemaphoreTake:%s(%d)", (uint32_t)re_lPGN, re_nDestAddress, esp_err_to_name(ret), ret);
 #endif
     lID = ((long)re_nPriority << 26) + (re_lPGN << 8) + (long)nSourceAddress;
-    if(ndataPage) //if data page is not 0 but other value. 
-      lID += ndataPage << 24;
+ //if data page is not 0 but other value. 
+    lID += ndataPage << 24;
     if (isPeerToPeer(re_lPGN) == true)
       lID = lID | ((long)re_nDestAddress << 8);
     if (nDataLen > 8)
